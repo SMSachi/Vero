@@ -1,6 +1,6 @@
 //
 //  OnboardingCoordinator.swift
-//  Vero
+//  Insio Health
 //
 //  Manages onboarding flow state and navigation
 //
@@ -11,7 +11,7 @@ import SwiftUI
 
 enum OnboardingStep: Int, CaseIterable {
     case cinematicIntro
-    case whatVeroDoes
+    case whatInsioDoes
     case healthPermission
     case goalSelection
     case contextPreferences
@@ -21,7 +21,7 @@ enum OnboardingStep: Int, CaseIterable {
     var progress: Double {
         switch self {
         case .cinematicIntro: return 0
-        case .whatVeroDoes: return 0.15
+        case .whatInsioDoes: return 0.15
         case .healthPermission: return 0.30
         case .goalSelection: return 0.50
         case .contextPreferences: return 0.70
@@ -39,7 +39,7 @@ enum OnboardingStep: Int, CaseIterable {
 
     var showsBackButton: Bool {
         switch self {
-        case .cinematicIntro, .whatVeroDoes, .complete: return false
+        case .cinematicIntro, .whatInsioDoes, .complete: return false
         default: return true
         }
     }
@@ -52,12 +52,18 @@ class OnboardingState: ObservableObject {
     @Published var currentStep: OnboardingStep = .cinematicIntro
 
     // User selections
-    @Published var selectedGoals: Set<FitnessGoal> = []
+    @Published var selectedGoals: Set<UserGoal> = []
+    @Published var primaryGoal: UserGoal? = nil
     @Published var trackWaterIntake: Bool = true
     @Published var trackNutrition: Bool = false
     @Published var trackNotes: Bool = true
     @Published var trackStressEnergy: Bool = true
     @Published var notificationsEnabled: Bool = true
+
+    /// Whether to show weight-related UI based on user's goal
+    var shouldShowWeightUI: Bool {
+        primaryGoal?.showsWeightUI ?? selectedGoals.contains(.weightLoss)
+    }
 
     // Reference to app state for completion
     weak var appState: AppState?
@@ -83,35 +89,51 @@ class OnboardingState: ObservableObject {
     }
 
     func completeOnboarding() {
+        // Save user goals to persistent service
+        UserGoalService.shared.setSelectedGoals(selectedGoals, primaryGoal: primaryGoal)
+
         appState?.completeOnboarding()
     }
 }
 
-// MARK: - Fitness Goal
+// MARK: - User Goal
 
-enum FitnessGoal: String, CaseIterable, Identifiable {
+/// Primary user goal - determines which UI elements and insights are shown.
+/// CRITICAL: Weight UI is ONLY shown when goal == .weightLoss
+enum UserGoal: String, CaseIterable, Identifiable, Codable {
+    case performance = "Performance"
+    case consistency = "Consistency"
     case recovery = "Recovery"
-    case endurance = "Endurance"
-    case hardEffort = "Hard effort"
-    case strength = "Strength"
-    case mobility = "Mobility"
-    case conditioning = "Conditioning"
-    case generalFitness = "General fitness"
+    case weightLoss = "Weight Loss"
 
     var id: String { rawValue }
 
     var icon: String {
         switch self {
-        case .recovery: return "arrow.trianglehead.2.clockwise"
-        case .endurance: return "figure.run"
-        case .hardEffort: return "flame.fill"
-        case .strength: return "dumbbell.fill"
-        case .mobility: return "figure.flexibility"
-        case .conditioning: return "heart.circle.fill"
-        case .generalFitness: return "figure.mixed.cardio"
+        case .performance: return "flame.fill"
+        case .consistency: return "calendar.badge.checkmark"
+        case .recovery: return "heart.circle.fill"
+        case .weightLoss: return "scalemass.fill"
         }
     }
+
+    var description: String {
+        switch self {
+        case .performance: return "Maximize workout performance and output"
+        case .consistency: return "Build lasting workout habits"
+        case .recovery: return "Optimize rest and prevent overtraining"
+        case .weightLoss: return "Track weight and body composition"
+        }
+    }
+
+    /// Whether weight-related UI should be shown for this goal
+    var showsWeightUI: Bool {
+        self == .weightLoss
+    }
 }
+
+/// Legacy alias for backward compatibility
+typealias FitnessGoal = UserGoal
 
 // MARK: - Onboarding Container View
 
@@ -126,11 +148,34 @@ struct OnboardingContainerView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
+                // Top bar with Skip button
+                HStack {
+                    // Back button (when applicable)
+                    if state.currentStep.showsBackButton {
+                        OnboardingBackButton()
+                    }
+
+                    Spacer()
+
+                    // Skip button (always visible except on complete screen)
+                    if state.currentStep != .complete {
+                        Button {
+                            skipOnboarding()
+                        } label: {
+                            Text("Skip")
+                                .font(AppTypography.labelMedium)
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.top, AppSpacing.sm)
+                .frame(height: 44)
+
                 // Progress bar (when applicable)
                 if state.currentStep.showsProgress {
                     OnboardingProgressBar(progress: state.currentStep.progress)
                         .padding(.horizontal, AppSpacing.screenHorizontal)
-                        .padding(.top, AppSpacing.sm)
                 }
 
                 // Content
@@ -138,8 +183,8 @@ struct OnboardingContainerView: View {
                     switch state.currentStep {
                     case .cinematicIntro:
                         CinematicIntroView()
-                    case .whatVeroDoes:
-                        WhatVeroDoesView()
+                    case .whatInsioDoes:
+                        WhatInsioDoesView()
                     case .healthPermission:
                         HealthPermissionIntroView()
                     case .goalSelection:
@@ -160,8 +205,14 @@ struct OnboardingContainerView: View {
         }
         .environmentObject(state)
         .onAppear {
+            print("🧭 OnboardingContainerView: appeared")
             state.appState = appState
         }
+    }
+
+    private func skipOnboarding() {
+        print("🧭 OnboardingContainerView: Skip tapped - routing to auth")
+        appState.skipOnboarding()
     }
 }
 

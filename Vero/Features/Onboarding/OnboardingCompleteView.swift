@@ -1,6 +1,6 @@
 //
 //  OnboardingCompleteView.swift
-//  Vero
+//  Insio Health
 //
 //  Final success screen - using unified layout system
 //
@@ -91,7 +91,7 @@ struct OnboardingCompleteView: View {
             // CTA
             // ═══════════════════════════════════════════
 
-            PrimaryButton("Start Using Vero", icon: "arrow.right") {
+            PrimaryButton("Start Using Insio", icon: "arrow.right") {
                 state.completeOnboarding()
             }
             .padding(.horizontal, AppSpacing.Layout.horizontalMargin)

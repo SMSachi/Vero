@@ -1,6 +1,6 @@
 //
 //  VeroCard.swift
-//  Vero
+//  Insio Health
 //
 //  Standardized card component for consistent styling
 //  Corner radius: 16, Padding: 16, Spacing: 16

@@ -1,6 +1,6 @@
 //
 //  TrendInsight.swift
-//  Vero
+//  Insio Health
 //
 
 import Foundation

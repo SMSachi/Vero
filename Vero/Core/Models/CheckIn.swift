@@ -1,6 +1,6 @@
 //
 //  CheckIn.swift
-//  Vero
+//  Insio Health
 //
 
 import Foundation

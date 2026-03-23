@@ -1,6 +1,6 @@
 //
 //  VeroScreenLayout.swift
-//  Vero
+//  Insio Health
 //
 //  Unified layout system for all screens
 //  Structure: Header → Content → Footer (optional)

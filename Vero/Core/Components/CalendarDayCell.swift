@@ -1,6 +1,6 @@
 //
 //  CalendarDayCell.swift
-//  Vero
+//  Insio Health
 //
 //  Calendar day cells for workout history
 //
@@ -119,11 +119,12 @@ struct CalendarWeekRow: View {
 // MARK: - Week Day Header
 
 struct WeekDayHeader: View {
+    // Use enumerated to avoid duplicate IDs (T appears twice, S appears twice)
     private let days = ["M", "T", "W", "T", "F", "S", "S"]
 
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(days, id: \.self) { day in
+            ForEach(Array(days.enumerated()), id: \.offset) { _, day in
                 Text(day)
                     .font(AppTypography.captionMedium)
                     .foregroundStyle(AppColors.textTertiary)

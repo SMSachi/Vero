@@ -1,6 +1,6 @@
 //
 //  CheckInOptionButton.swift
-//  Vero
+//  Insio Health
 //
 //  Selection buttons for check-in flows
 //

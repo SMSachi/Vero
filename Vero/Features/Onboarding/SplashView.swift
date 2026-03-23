@@ -1,6 +1,6 @@
 //
 //  SplashView.swift
-//  Vero
+//  Insio Health
 //
 //  Initial splash screen with wordmark and CTA
 //
@@ -19,7 +19,7 @@ struct SplashView: View {
             // Logo and wordmark
             VStack(spacing: AppSpacing.lg) {
                 // Wordmark
-                Text("Vero")
+                Text("Insio")
                     .font(.system(size: 56, weight: .bold, design: .rounded))
                     .foregroundStyle(AppColors.navy)
                     .opacity(showContent ? 1 : 0)

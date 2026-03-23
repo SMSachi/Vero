@@ -1,6 +1,6 @@
 //
 //  NextDayRecovery.swift
-//  Vero
+//  Insio Health
 //
 
 import Foundation

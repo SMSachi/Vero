@@ -1,6 +1,6 @@
 //
 //  AppTypography.swift
-//  Vero
+//  Insio Health
 //
 //  Bold, warm typography hierarchy with personality
 //

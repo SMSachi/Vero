@@ -1,6 +1,6 @@
 //
 //  Workout.swift
-//  Vero
+//  Insio Health
 //
 
 import Foundation
@@ -12,10 +12,23 @@ struct Workout: Identifiable, Codable {
     let endDate: Date
     let duration: TimeInterval
     let calories: Int
-    let averageHeartRate: Int
-    let maxHeartRate: Int
+    let averageHeartRate: Int?
+    let maxHeartRate: Int?
     let intensity: WorkoutIntensity
     let interpretation: String
+
+    // Manual entry flag
+    var isManualEntry: Bool = false
+
+    // Source tracking - used to determine check-in eligibility
+    var source: WorkoutSource = .healthKit
+
+    // Custom type name (when type == .other)
+    var customTypeName: String?
+
+    // Session tracking - UUID of the app session when this workout was created/imported
+    // Used to prevent check-ins for restored/synced historical workouts
+    var createdInSession: String?
 
     // Extended metrics
     var recoveryHeartRate: Int?
@@ -84,6 +97,46 @@ struct Workout: Identifiable, Codable {
             return .recovery
         case .other:
             return .mixed
+        }
+    }
+
+    /// Display name for the workout type (uses custom name for "Other" types)
+    var typeDisplayName: String {
+        if type == .other, let customName = customTypeName, !customName.isEmpty {
+            return customName
+        }
+        return type.rawValue
+    }
+
+    /// Whether this workout is eligible for check-in prompts
+    var isEligibleForCheckIn: Bool {
+        // Must be from eligible source
+        guard source.eligibleForCheckIn else { return false }
+
+        // Must be recent (within 4 hours)
+        let hoursSinceEnd = -endDate.timeIntervalSinceNow / 3600
+        guard hoursSinceEnd < 4 && hoursSinceEnd >= 0 else { return false }
+
+        return true
+    }
+}
+
+// MARK: - Workout Source
+
+/// Tracks how a workout was created/imported
+enum WorkoutSource: String, Codable, CaseIterable {
+    case healthKit = "healthkit"      // Imported from HealthKit
+    case manual = "manual"            // Manually entered by user
+    case cloudSync = "cloud_sync"     // Restored from cloud sync
+    case historical = "historical"    // Historical import (older than current session)
+
+    /// Whether this workout source is eligible for post-workout check-ins
+    var eligibleForCheckIn: Bool {
+        switch self {
+        case .healthKit, .manual:
+            return true
+        case .cloudSync, .historical:
+            return false
         }
     }
 }

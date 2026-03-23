@@ -1,6 +1,6 @@
 //
 //  MountainIntroView.swift
-//  Vero
+//  Insio Health
 //
 //  Premium onboarding screen with stylized mountain/path concept
 //
@@ -16,7 +16,7 @@ struct MountainIntroView: View {
         "Workouts aren't all the same.",
         "Your workout today won't be the same as last week.",
         "Those differences have meaning.",
-        "Vero helps you understand them."
+        "Insio helps you understand them."
     ]
 
     var body: some View {

@@ -1,6 +1,6 @@
 //
 //  InsightCard.swift
-//  Vero
+//  Insio Health
 //
 //  Editorial insight card with clean typography
 //

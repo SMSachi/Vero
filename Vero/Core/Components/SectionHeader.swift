@@ -1,6 +1,6 @@
 //
 //  SectionHeader.swift
-//  Vero
+//  Insio Health
 //
 //  Reusable section header with optional action
 //

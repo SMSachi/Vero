@@ -1,6 +1,6 @@
 //
 //  SmallContextCard.swift
-//  Vero
+//  Insio Health
 //
 //  Compact context cards for daily metrics
 //

@@ -1,6 +1,6 @@
 //
 //  NotificationSetupView.swift
-//  Vero
+//  Insio Health
 //
 //  Explain and request notification permissions
 //

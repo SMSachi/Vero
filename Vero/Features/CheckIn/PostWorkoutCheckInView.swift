@@ -1,8 +1,9 @@
 //
 //  PostWorkoutCheckInView.swift
-//  Vero
+//  Insio Health
 //
 //  Full-screen post-workout check-in - unified design system
+//  Saves check-in data to local persistence via AppState.
 //
 
 import SwiftUI
@@ -11,6 +12,8 @@ struct PostWorkoutCheckInView: View {
     let workout: Workout
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var appState: AppState
+
     @State private var selectedFeeling: WorkoutFeeling?
     @State private var showFollowUp = false
     @State private var additionalNote = ""
@@ -26,7 +29,8 @@ struct PostWorkoutCheckInView: View {
                     Spacer()
 
                     Button {
-                        dismiss()
+                        // Dismiss without saving
+                        appState.skipPostWorkoutCheckIn()
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 15, weight: .semibold))
@@ -83,7 +87,8 @@ struct PostWorkoutCheckInView: View {
                                 selectedFeeling = feeling
                             }
 
-                            if feeling == .hard || feeling == .brutal {
+                            // Show follow-up note option for intense workouts
+                            if feeling == .hard || feeling == .maxEffort {
                                 withAnimation(AppAnimation.springGentle.delay(0.2)) {
                                     showFollowUp = true
                                 }
@@ -120,15 +125,20 @@ struct PostWorkoutCheckInView: View {
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
 
-                    if selectedFeeling != nil {
+                    if let feeling = selectedFeeling {
                         PrimaryButton("Done", icon: "checkmark") {
-                            dismiss()
+                            // Save check-in to persistence via AppState
+                            appState.completePostWorkoutCheckIn(
+                                feeling: feeling.rawValue,
+                                note: additionalNote.isEmpty ? nil : additionalNote
+                            )
                         }
                         .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     } else {
                         TextButton("Skip for now") {
-                            dismiss()
+                            // Dismiss without saving
+                            appState.skipPostWorkoutCheckIn()
                         }
                     }
                 }
@@ -156,38 +166,42 @@ struct PostWorkoutCheckInView: View {
     }
 }
 
-// MARK: - Workout Feeling
+// MARK: - Workout Feeling (Aligned with Effort Level terminology)
 
 enum WorkoutFeeling: String, CaseIterable {
-    case easy = "Easy"
-    case good = "Good"
+    case veryLight = "Very Light"
+    case light = "Light"
+    case moderate = "Moderate"
     case hard = "Hard"
-    case brutal = "Brutal"
+    case maxEffort = "Max Effort"
 
     var icon: String {
         switch self {
-        case .easy: return "leaf.fill"
-        case .good: return "hand.thumbsup.fill"
-        case .hard: return "flame.fill"
-        case .brutal: return "bolt.fill"
+        case .veryLight: return "leaf.fill"
+        case .light: return "wind"
+        case .moderate: return "flame.fill"
+        case .hard: return "bolt.fill"
+        case .maxEffort: return "bolt.horizontal.fill"
         }
     }
 
     var color: Color {
         switch self {
-        case .easy: return AppColors.intensityLow
-        case .good: return AppColors.olive
-        case .hard: return AppColors.intensityHigh
-        case .brutal: return AppColors.intensityMax
+        case .veryLight: return AppColors.intensityLow
+        case .light: return AppColors.olive
+        case .moderate: return AppColors.navy
+        case .hard: return AppColors.orange
+        case .maxEffort: return AppColors.coral
         }
     }
 
     var description: String {
         switch self {
-        case .easy: return "Felt smooth and comfortable"
-        case .good: return "Challenged but in control"
-        case .hard: return "Really pushed myself"
-        case .brutal: return "Everything I had"
+        case .veryLight: return "Recovery pace, felt easy"
+        case .light: return "Comfortable, could hold a conversation"
+        case .moderate: return "Challenging but sustainable"
+        case .hard: return "Pushed myself, felt the effort"
+        case .maxEffort: return "Everything I had"
         }
     }
 }
@@ -201,49 +215,46 @@ struct WorkoutFeelingButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 14) {
+            HStack(spacing: AppSpacing.md) {
                 // Icon circle
                 ZStack {
                     Circle()
                         .fill(isSelected ? feeling.color : feeling.color.opacity(0.12))
-                        .frame(width: AppSpacing.Icon.circleMedium, height: AppSpacing.Icon.circleMedium)
+                        .frame(width: 36, height: 36)
 
                     Image(systemName: feeling.icon)
-                        .font(.system(size: AppSpacing.Icon.large, weight: .medium))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(isSelected ? .white : feeling.color)
                 }
 
-                // Text
+                // Labels
                 VStack(alignment: .leading, spacing: 2) {
                     Text(feeling.rawValue)
-                        .font(AppTypography.cardTitle)
+                        .font(AppTypography.cardSubtitle)
                         .foregroundStyle(AppColors.textPrimary)
 
                     Text(feeling.description)
-                        .font(AppTypography.bodySmall)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .font(AppTypography.caption)
+                        .foregroundStyle(AppColors.textTertiary)
                 }
 
                 Spacer()
 
-                // Checkmark
+                // Selection indicator
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: AppSpacing.Icon.xlarge, weight: .medium))
+                        .font(.system(size: 20, weight: .medium))
                         .foregroundStyle(feeling.color)
                         .transition(.scale.combined(with: .opacity))
                 }
             }
-            .padding(AppSpacing.Layout.cardPadding)
-            .background(
-                isSelected ? feeling.color.opacity(0.08) : AppColors.cardBackground
-            )
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.Layout.cardRadius, style: .continuous))
+            .padding(AppSpacing.md)
+            .background(isSelected ? feeling.color.opacity(0.08) : AppColors.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: AppSpacing.Layout.cardRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(isSelected ? feeling.color.opacity(0.4) : AppColors.divider, lineWidth: isSelected ? 2 : 1)
             )
-            .standardShadow()
         }
         .buttonStyle(BounceButtonStyle())
     }
@@ -253,4 +264,5 @@ struct WorkoutFeelingButton: View {
 
 #Preview {
     PostWorkoutCheckInView(workout: MockData.detailedWorkout)
+        .environmentObject(AppState())
 }

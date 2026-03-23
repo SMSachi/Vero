@@ -1,6 +1,6 @@
 //
 //  WorkoutSummaryView.swift
-//  Vero
+//  Insio Health
 //
 //  Premium, editorial workout summary screen
 //
@@ -231,10 +231,15 @@ struct MetricsGridSection: View {
     let workout: Workout
 
     private var metrics: [(label: String, value: String, unit: String?, icon: String, color: Color)] {
-        var result: [(String, String, String?, String, Color)] = [
-            ("Avg HR", "\(workout.averageHeartRate)", "bpm", "heart.fill", .red),
-            ("Peak HR", "\(workout.maxHeartRate)", "bpm", "heart.circle.fill", AppColors.intensityMax)
-        ]
+        var result: [(String, String, String?, String, Color)] = []
+
+        if let avgHR = workout.averageHeartRate {
+            result.append(("Avg HR", "\(avgHR)", "bpm", "heart.fill", .red))
+        }
+
+        if let maxHR = workout.maxHeartRate {
+            result.append(("Peak HR", "\(maxHR)", "bpm", "heart.circle.fill", AppColors.intensityMax))
+        }
 
         if let recovery = workout.recoveryHeartRate {
             result.append(("Recovery HR", "\(recovery)", "bpm", "arrow.down.heart.fill", AppColors.olive))

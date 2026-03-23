@@ -1,6 +1,6 @@
 //
 //  WorkoutInsightView.swift
-//  Vero
+//  Insio Health
 //
 //  Immersive, narrative workout insight experience
 //  Feels like a calm, intelligent interpretation — not a stats dashboard
@@ -10,6 +10,7 @@ import SwiftUI
 
 struct WorkoutInsightView: View {
     let workout: Workout
+    var interpretation: WorkoutInterpretation? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -150,6 +151,7 @@ struct WorkoutInsightView: View {
     }
 
     // MARK: - Narrative Content
+    // Uses InterpretationEngine output when available, falls back to hardcoded logic
 
     private var labelText: String {
         let hour = Calendar.current.component(.hour, from: workout.endDate)
@@ -163,11 +165,17 @@ struct WorkoutInsightView: View {
     }
 
     private var narrativeHeadline: String {
-        // Use workout's interpretation or generate based on context
+        // Priority 1: Use InterpretationEngine summary
+        if let interp = interpretation {
+            return interp.summaryText
+        }
+
+        // Priority 2: Use workout's stored interpretation
         if let whatItMeans = workout.whatItMeans {
             return whatItMeans
         }
 
+        // Priority 3: Generate based on intensity
         switch workout.intensity {
         case .low:
             return "A gentle session that kept you moving without taxing your system."
@@ -181,28 +189,51 @@ struct WorkoutInsightView: View {
     }
 
     private var explanationText: String {
+        // Priority 1: Use InterpretationEngine explanation
+        if let interp = interpretation {
+            return interp.interpretationText
+        }
+
+        // Priority 2: Use workout's stored explanation
         if let whatHappened = workout.whatHappened {
             return whatHappened
         }
 
+        // Priority 3: Generate basic explanation
         let duration = workout.durationFormatted
-        let avgHR = workout.averageHeartRate
-        let maxHR = workout.maxHeartRate
 
-        return "During this \(duration) \(workout.type.rawValue.lowercased()), your heart rate averaged \(avgHR) bpm and peaked at \(maxHR) bpm. Based on your recent patterns, this represents a \(workout.intensity.rawValue.lowercased()) intensity effort for your current fitness level."
+        if let avgHR = workout.averageHeartRate, let maxHR = workout.maxHeartRate {
+            return "During this \(duration) \(workout.type.rawValue.lowercased()), your heart rate averaged \(avgHR) bpm and peaked at \(maxHR) bpm. Based on your recent patterns, this represents a \(workout.intensity.rawValue.lowercased()) intensity effort for your current fitness level."
+        } else {
+            return "This \(duration) \(workout.type.rawValue.lowercased()) was a \(workout.intensity.rawValue.lowercased()) intensity effort based on your perceived exertion."
+        }
     }
 
     private var contextBullets: [(icon: String, text: String, sentiment: BulletSentiment)] {
+        // Priority 1: Use InterpretationEngine bullets
+        if let interp = interpretation, !interp.bulletPoints.isEmpty {
+            return interp.bulletPoints.map { bullet in
+                let sentiment: BulletSentiment
+                switch bullet.sentiment {
+                case .positive: sentiment = .positive
+                case .neutral: sentiment = .neutral
+                case .caution: sentiment = .caution
+                }
+                return (bullet.icon, bullet.text, sentiment)
+            }
+        }
+
+        // Priority 2: Generate from workout data
         var bullets: [(String, String, BulletSentiment)] = []
 
         // Heart rate context
-        if workout.averageHeartRate > 150 {
+        if let avgHR = workout.averageHeartRate, avgHR > 150 {
             bullets.append((
                 "heart.fill",
                 "Heart rate stayed elevated throughout",
                 .caution
             ))
-        } else {
+        } else if workout.averageHeartRate != nil {
             bullets.append((
                 "heart.fill",
                 "Heart rate remained in a comfortable zone",
@@ -261,10 +292,17 @@ struct WorkoutInsightView: View {
     }
 
     private var takeawayText: String {
+        // Priority 1: Use InterpretationEngine recommendation
+        if let interp = interpretation {
+            return interp.recommendationText
+        }
+
+        // Priority 2: Use workout's stored recommendation
         if let whatToDoNext = workout.whatToDoNext {
             return whatToDoNext
         }
 
+        // Priority 3: Generate based on intensity
         switch workout.intensity {
         case .low:
             return "Light movement tomorrow is fine. Your body can handle more if you're feeling ready."

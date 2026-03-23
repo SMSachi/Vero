@@ -1,20 +1,33 @@
 //
 //  NextDayCheckInView.swift
-//  Vero
+//  Insio Health
 //
 //  Full-screen next-day recovery check-in - unified design system
+//  Saves recovery check-in data to local persistence via AppState.
 //
 
 import SwiftUI
 
 struct NextDayCheckInView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var appState: AppState
+
     @State private var selectedFeeling: BodyFeeling?
     @State private var headerVisible = false
     @State private var cardsVisible = false
     @State private var footerVisible = false
 
-    private let previousWorkout = MockData.detailedWorkout
+    /// Get the previous workout from AppState or persistence
+    private var previousWorkout: Workout? {
+        // Try to get the workout we're checking in for
+        if let workoutId = appState.nextDayCheckInWorkoutId,
+           let workout = PersistenceService.shared.fetchLatestWorkout(),
+           workout.id == workoutId {
+            return workout
+        }
+        // Fall back to the latest persisted workout
+        return PersistenceService.shared.fetchLatestWorkout()
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -24,7 +37,8 @@ struct NextDayCheckInView: View {
                     Spacer()
 
                     Button {
-                        dismiss()
+                        // Dismiss without saving
+                        appState.skipNextDayCheckIn()
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 15, weight: .semibold))
@@ -60,9 +74,15 @@ struct NextDayCheckInView: View {
                         .multilineTextAlignment(.center)
 
                     // Context from yesterday
-                    Text("After yesterday's \(previousWorkout.type.rawValue.lowercased())")
-                        .font(AppTypography.bodyMedium)
-                        .foregroundStyle(AppColors.textTertiary)
+                    if let workout = previousWorkout {
+                        Text("After yesterday's \(workout.type.rawValue.lowercased())")
+                            .font(AppTypography.bodyMedium)
+                            .foregroundStyle(AppColors.textTertiary)
+                    } else {
+                        Text("After yesterday's workout")
+                            .font(AppTypography.bodyMedium)
+                            .foregroundStyle(AppColors.textTertiary)
+                    }
                 }
                 .padding(.top, AppSpacing.Layout.sectionSpacing)
                 .opacity(headerVisible ? 1 : 0)
@@ -91,15 +111,17 @@ struct NextDayCheckInView: View {
 
                 // FOOTER
                 VStack(spacing: AppSpacing.Layout.cardSpacing) {
-                    if selectedFeeling != nil {
+                    if let feeling = selectedFeeling {
                         PrimaryButton("Done", icon: "checkmark") {
-                            dismiss()
+                            // Save check-in to persistence via AppState
+                            appState.completeNextDayCheckIn(bodyFeeling: feeling.rawValue)
                         }
                         .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     } else {
                         TextButton("Skip for now") {
-                            dismiss()
+                            // Dismiss without saving
+                            appState.skipNextDayCheckIn()
                         }
                     }
                 }
@@ -224,4 +246,5 @@ struct BodyFeelingButton: View {
 
 #Preview {
     NextDayCheckInView()
+        .environmentObject(AppState())
 }

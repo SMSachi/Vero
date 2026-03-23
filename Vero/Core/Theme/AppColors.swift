@@ -1,6 +1,6 @@
 //
 //  AppColors.swift
-//  Vero
+//  Insio Health
 //
 //  Premium, warm, emotionally engaging color palette
 //

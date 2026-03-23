@@ -1,6 +1,6 @@
 //
 //  MainTabView.swift
-//  Vero
+//  Insio Health
 //
 //  Root tab navigation with refined design
 //
@@ -9,7 +9,9 @@ import SwiftUI
 
 struct MainTabView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: Tab = .home
+    @State private var showDebugAlert = false  // DEBUG: Alert to prove view appeared
 
     enum Tab: Int, CaseIterable {
         case home
@@ -46,20 +48,30 @@ struct MainTabView: View {
     }
 
     var body: some View {
+        // DEBUG: Log every body evaluation
+        let _ = print("📱 MainTabView: body EVALUATING - START")
+
         ZStack(alignment: .bottom) {
             // Content
+            let _ = print("📱 MainTabView: Creating TabView...")
             TabView(selection: $selectedTab) {
+                let _ = print("📱 MainTabView: Creating HomeDashboardView...")
                 HomeDashboardView()
                     .tag(Tab.home)
 
+                let _ = print("📱 MainTabView: Creating WorkoutsListView...")
                 WorkoutsListView()
                     .tag(Tab.workouts)
 
+                let _ = print("📱 MainTabView: Creating TrendsView...")
                 TrendsView()
                     .tag(Tab.trends)
 
+                let _ = print("📱 MainTabView: Creating ProfileView...")
                 ProfileView()
                     .tag(Tab.profile)
+
+                let _ = print("📱 MainTabView: All tab views created")
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
 
@@ -69,11 +81,49 @@ struct MainTabView: View {
         .ignoresSafeArea(.keyboard)
         // Post-workout check-in modal (full screen)
         .fullScreenCover(isPresented: $appState.showPostWorkoutCheckIn) {
-            PostWorkoutCheckInView(workout: appState.checkInWorkout)
+            if let workout = appState.checkInWorkout {
+                PostWorkoutCheckInView(workout: workout)
+            }
         }
         // Next-day check-in modal (full screen)
         .fullScreenCover(isPresented: $appState.showNextDayCheckIn) {
             NextDayCheckInView()
+        }
+        .onAppear {
+            print("📱 ══════════════════════════════════════════════════")
+            print("📱 MainTabView: APPEARED")
+            print("📱 MainTabView: selectedTab = \(selectedTab.rawValue)")
+            print("📱 MainTabView: showPostWorkoutCheckIn = \(appState.showPostWorkoutCheckIn)")
+            print("📱 MainTabView: showNextDayCheckIn = \(appState.showNextDayCheckIn)")
+            print("📱 ══════════════════════════════════════════════════")
+            // Check for pending check-ins when app first appears
+            appState.checkForPendingCheckIns()
+
+            // DEBUG: Show alert to PROVE this view appeared
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                showDebugAlert = true
+            }
+        }
+        // DEBUG ALERT - If you see this, MainTabView IS visible
+        .alert("SUCCESS!", isPresented: $showDebugAlert) {
+            Button("OK - I see the main app!") {
+                showDebugAlert = false
+            }
+        } message: {
+            Text("MainTabView appeared! If you see this alert, the routing worked and you should see the home screen behind this alert.")
+        }
+        .onChange(of: appState.showPostWorkoutCheckIn) { _, show in
+            print("📱 MainTabView: showPostWorkoutCheckIn changed to \(show)")
+        }
+        .onChange(of: appState.showNextDayCheckIn) { _, show in
+            print("📱 MainTabView: showNextDayCheckIn changed to \(show)")
+        }
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            // Check for pending check-ins when app becomes active (from background)
+            if newPhase == .active && oldPhase != .active {
+                print("📱 MainTabView: App became active - checking for pending check-ins")
+                appState.checkForPendingCheckIns()
+            }
         }
     }
 }
@@ -143,4 +193,6 @@ struct TabBarButtonStyle: ButtonStyle {
 #Preview {
     MainTabView()
         .environmentObject(AppState())
+        .environmentObject(AuthService.shared)
+        .environmentObject(SupabaseSyncService.shared)
 }

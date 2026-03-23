@@ -1,8 +1,10 @@
 //
 //  HealthPermissionIntroView.swift
-//  Vero
+//  Insio Health
 //
-//  Explains Apple Health data access requirements
+//  Explains Apple Health data access requirements.
+//  When the user taps Continue, this view requests HealthKit authorization
+//  via HealthKitService before proceeding to the next onboarding step.
 //
 
 import SwiftUI
@@ -10,6 +12,7 @@ import SwiftUI
 struct HealthPermissionIntroView: View {
     @EnvironmentObject var state: OnboardingState
     @State private var showContent = false
+    @State private var isRequestingAuthorization = false
 
     private let requiredData: [(icon: String, title: String, description: String)] = [
         ("figure.run", "Workouts", "Types, duration, and timestamps"),
@@ -67,7 +70,7 @@ struct HealthPermissionIntroView: View {
                         .font(AppTypography.displaySmall)
                         .foregroundStyle(AppColors.textPrimary)
 
-                    Text("Vero reads your workout data to provide\npersonalized insights.")
+                    Text("Insio reads your workout data to provide\npersonalized insights.")
                         .font(AppTypography.bodyMedium)
                         .foregroundStyle(AppColors.textSecondary)
                         .multilineTextAlignment(.center)
@@ -144,9 +147,13 @@ struct HealthPermissionIntroView: View {
                     .frame(height: AppSpacing.xxl)
 
                 // CTA
-                PrimaryButton("Continue") {
-                    // In real app, this would trigger HealthKit permission request
-                    state.nextStep()
+                // When tapped, this button requests HealthKit authorization
+                // The system will present the HealthKit permission sheet
+                PrimaryButton(
+                    isRequestingAuthorization ? "Connecting..." : "Continue",
+                    isDisabled: isRequestingAuthorization
+                ) {
+                    requestHealthKitAuthorization()
                 }
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .padding(.bottom, AppSpacing.xxl)
@@ -155,6 +162,29 @@ struct HealthPermissionIntroView: View {
         .onAppear {
             withAnimation(AppAnimation.entrance) {
                 showContent = true
+            }
+        }
+    }
+
+    // MARK: - HealthKit Authorization
+
+    /// Request HealthKit authorization and proceed to next step.
+    /// This triggers the system HealthKit permission sheet.
+    /// We proceed to the next step regardless of the user's choice,
+    /// as the app can still function with mock data if permission is denied.
+    private func requestHealthKitAuthorization() {
+        isRequestingAuthorization = true
+
+        Task {
+            // Request authorization from HealthKitService
+            // This will present the system HealthKit permission sheet
+            let _ = await HealthKitService.shared.requestAuthorization()
+
+            // Proceed to next step regardless of authorization result
+            // The app will use mock data if permission was denied
+            await MainActor.run {
+                isRequestingAuthorization = false
+                state.nextStep()
             }
         }
     }

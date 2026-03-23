@@ -1,6 +1,6 @@
 //
 //  Buttons.swift
-//  Vero
+//  Insio Health
 //
 //  Premium button components with personality
 //

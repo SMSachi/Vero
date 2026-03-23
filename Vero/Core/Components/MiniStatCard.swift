@@ -1,6 +1,6 @@
 //
 //  MiniStatCard.swift
-//  Vero
+//  Insio Health
 //
 //  Compact stat display for grids and summaries
 //

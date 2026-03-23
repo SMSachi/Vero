@@ -1,6 +1,6 @@
 //
 //  ContextPreferencesView.swift
-//  Vero
+//  Insio Health
 //
 //  Daily context - unified design system
 //

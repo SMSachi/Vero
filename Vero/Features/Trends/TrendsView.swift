@@ -1,8 +1,9 @@
 //
 //  TrendsView.swift
-//  Vero
+//  Insio Health
 //
-//  Trends screen - unified design system
+//  Trends screen - displays analyzed workout patterns and insights
+//  using data from TrendAnalysisEngine.
 //
 
 import SwiftUI
@@ -10,7 +11,7 @@ import SwiftUI
 // MARK: - Trends View
 
 struct TrendsView: View {
-    @State private var selectedTimeframe: TrendTimeframe = .month
+    @StateObject private var viewModel = TrendsViewModel()
 
     // Animation states
     @State private var headerVisible = false
@@ -24,24 +25,39 @@ struct TrendsView: View {
                 VStack(spacing: AppSpacing.Layout.sectionSpacing) {
 
                     // Header
-                    TrendsHeader(selectedTimeframe: $selectedTimeframe)
-                        .opacity(headerVisible ? 1 : 0)
-                        .offset(y: headerVisible ? 0 : 15)
+                    TrendsHeader(
+                        selectedTimeframe: $viewModel.selectedTimeframe,
+                        subtitle: viewModel.selectedTimeframe.subtitleText
+                    )
+                    .opacity(headerVisible ? 1 : 0)
+                    .offset(y: headerVisible ? 0 : 15)
 
-                    // Insight Cards
-                    InsightCardsRow()
-                        .opacity(insightsVisible ? 1 : 0)
-                        .offset(y: insightsVisible ? 0 : 15)
+                    // Insight Cards or Empty State
+                    if !viewModel.topInsights.isEmpty {
+                        InsightCardsRow(insights: viewModel.topInsights)
+                            .opacity(insightsVisible ? 1 : 0)
+                            .offset(y: insightsVisible ? 0 : 15)
+                    } else if !viewModel.isLoading && !viewModel.hasRealData {
+                        TrendsEmptyState()
+                            .opacity(insightsVisible ? 1 : 0)
+                            .offset(y: insightsVisible ? 0 : 15)
+                    }
 
                     // Activity Calendar
-                    ActivityCalendarSection()
-                        .opacity(calendarVisible ? 1 : 0)
-                        .offset(y: calendarVisible ? 0 : 15)
+                    ActivityCalendarSection(
+                        calendarData: viewModel.calendarData,
+                        workoutCount: viewModel.workoutCount,
+                        timeframeDays: viewModel.timeframeDays
+                    )
+                    .opacity(calendarVisible ? 1 : 0)
+                    .offset(y: calendarVisible ? 0 : 15)
 
                     // Trend Charts
-                    TrendChartsSection()
-                        .opacity(chartsVisible ? 1 : 0)
-                        .offset(y: chartsVisible ? 0 : 12)
+                    if !viewModel.metricTrends.isEmpty {
+                        TrendChartsSection(trends: viewModel.metricTrends)
+                            .opacity(chartsVisible ? 1 : 0)
+                            .offset(y: chartsVisible ? 0 : 12)
+                    }
                 }
                 .padding(.top, AppSpacing.Layout.topPadding)
                 .padding(.bottom, AppSpacing.Layout.bottomScrollPadding)
@@ -49,8 +65,15 @@ struct TrendsView: View {
             .background(AppColors.background)
             .navigationBarHidden(true)
         }
+        .task {
+            await viewModel.loadTrends()
+        }
         .onAppear {
             startEntranceAnimations()
+            // Refresh trends when returning to this tab (picks up newly added workouts)
+            Task {
+                await viewModel.refresh()
+            }
         }
     }
 
@@ -90,6 +113,7 @@ enum TrendTimeframe: String, CaseIterable {
 
 struct TrendsHeader: View {
     @Binding var selectedTimeframe: TrendTimeframe
+    let subtitle: String
 
     var body: some View {
         HStack(alignment: .top) {
@@ -98,7 +122,7 @@ struct TrendsHeader: View {
                     .font(AppTypography.screenTitle)
                     .foregroundStyle(AppColors.textPrimary)
 
-                Text("Your patterns this month")
+                Text(subtitle)
                     .font(AppTypography.bodySmall)
                     .foregroundStyle(AppColors.textSecondary)
             }
@@ -135,28 +159,12 @@ struct TrendsHeader: View {
 // MARK: - Insight Cards Row
 
 struct InsightCardsRow: View {
-    private let insights: [TrendInsightItem] = [
-        TrendInsightItem(
-            icon: "arrow.down.right",
-            color: AppColors.olive,
-            text: "You recover faster after strength workouts."
-        ),
-        TrendInsightItem(
-            icon: "moon.zzz.fill",
-            color: .indigo,
-            text: "Your sleep strongly predicts workout difficulty."
-        ),
-        TrendInsightItem(
-            icon: "flame.fill",
-            color: AppColors.coral,
-            text: "High intensity days need 48hrs recovery."
-        )
-    ]
+    let insights: [GeneratedInsight]
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: AppSpacing.Layout.cardSpacing) {
-                ForEach(Array(insights.enumerated()), id: \.offset) { _, insight in
+                ForEach(insights) { insight in
                     TrendInsightCard(insight: insight)
                 }
             }
@@ -165,105 +173,115 @@ struct InsightCardsRow: View {
     }
 }
 
-struct TrendInsightItem {
-    let icon: String
-    let color: Color
-    let text: String
-}
-
 struct TrendInsightCard: View {
-    let insight: TrendInsightItem
+    let insight: GeneratedInsight
+
+    private var color: Color {
+        switch insight.color {
+        case "olive": return AppColors.olive
+        case "coral": return AppColors.coral
+        case "navy": return AppColors.navy
+        case "indigo": return .indigo
+        default: return AppColors.navy
+        }
+    }
 
     var body: some View {
         HStack(spacing: AppSpacing.sm) {
             ZStack {
                 Circle()
-                    .fill(insight.color.opacity(0.12))
+                    .fill(color.opacity(0.12))
                     .frame(width: AppSpacing.Icon.circleSmall, height: AppSpacing.Icon.circleSmall)
 
                 Image(systemName: insight.icon)
                     .font(.system(size: AppSpacing.Icon.medium, weight: .semibold))
-                    .foregroundStyle(insight.color)
+                    .foregroundStyle(color)
             }
 
-            Text(insight.text)
+            Text(insight.description)
                 .font(AppTypography.cardSubtitle)
                 .foregroundStyle(AppColors.textPrimary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(AppSpacing.Layout.cardPadding)
-        .frame(width: 260)
+        .frame(width: 280)
         .background(AppColors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.Layout.cardRadius, style: .continuous))
         .standardShadow()
     }
 }
 
+// MARK: - Empty State
+
+struct EmptyInsightsPlaceholder: View {
+    var body: some View {
+        VStack(spacing: AppSpacing.md) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.system(size: 32, weight: .medium))
+                .foregroundStyle(AppColors.textTertiary)
+
+            Text("Complete more workouts to see trends")
+                .font(AppTypography.bodyMedium)
+                .foregroundStyle(AppColors.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, AppSpacing.xxl)
+        .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
+    }
+}
+
 // MARK: - Activity Calendar Section
 
 struct ActivityCalendarSection: View {
-    private let calendar = Calendar.current
-    private let today = Date()
+    let calendarData: [CalendarDayData]
+    let workoutCount: Int
+    let timeframeDays: Int
 
-    private var calendarData: [[CalendarDay]] {
-        var weeks: [[CalendarDay]] = []
-        let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today))!
+    private let calendar = Calendar.current
+
+    private var calendarGrid: [[CalendarDayData?]] {
+        var weeks: [[CalendarDayData?]] = []
+        let today = Date()
+        guard let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) else {
+            return weeks
+        }
 
         for weekOffset in (-3...0).reversed() {
-            var week: [CalendarDay] = []
-            let weekStart = calendar.date(byAdding: .weekOfYear, value: weekOffset, to: startOfWeek)!
+            var week: [CalendarDayData?] = []
+            guard let weekStart = calendar.date(byAdding: .weekOfYear, value: weekOffset, to: startOfWeek) else {
+                continue
+            }
 
             for dayOffset in 0..<7 {
-                let date = calendar.date(byAdding: .day, value: dayOffset, to: weekStart)!
-                let dayNum = calendar.component(.day, from: date)
-                let isToday = calendar.isDateInToday(date)
-                let isFuture = date > today
-
-                let workout = mockWorkoutFor(weekOffset: weekOffset, dayOffset: dayOffset, isFuture: isFuture)
-
-                week.append(CalendarDay(
-                    day: dayNum,
-                    isToday: isToday,
-                    isFuture: isFuture,
-                    workout: workout
-                ))
+                guard let date = calendar.date(byAdding: .day, value: dayOffset, to: weekStart) else {
+                    week.append(nil)
+                    continue
+                }
+                let dayData = calendarData.first { calendar.isDate($0.date, inSameDayAs: date) }
+                week.append(dayData)
             }
             weeks.append(week)
         }
         return weeks
     }
 
-    private func mockWorkoutFor(weekOffset: Int, dayOffset: Int, isFuture: Bool) -> CalendarWorkout? {
-        guard !isFuture else { return nil }
-
-        let patterns: [Int: (WorkoutType, CalendarWorkout.Feeling)] = [
-            1: (.run, .good),
-            3: (.strength, .moderate),
-            5: (.run, .good),
-            6: (.hiit, .hard)
-        ]
-
-        if weekOffset == 0 && dayOffset > calendar.component(.weekday, from: today) - 1 {
-            return nil
-        }
-
-        if let pattern = patterns[dayOffset] {
-            if weekOffset == -2 && dayOffset == 3 { return nil }
-            if weekOffset == -1 && dayOffset == 6 { return nil }
-            return CalendarWorkout(type: pattern.0, feeling: pattern.1)
-        }
-
-        return nil
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
             // Section header
             HStack {
-                Text("Activity")
-                    .font(AppTypography.sectionHeader)
-                    .foregroundStyle(AppColors.textPrimary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Activity")
+                        .font(AppTypography.sectionHeader)
+                        .foregroundStyle(AppColors.textPrimary)
+
+                    if workoutCount > 0 {
+                        Text("\(workoutCount) workout\(workoutCount == 1 ? "" : "s") in \(timeframeDays) days")
+                            .font(AppTypography.statLabel)
+                            .foregroundStyle(AppColors.textTertiary)
+                    }
+                }
 
                 Spacer()
 
@@ -277,8 +295,9 @@ struct ActivityCalendarSection: View {
             // Calendar card
             VStack(spacing: AppSpacing.xs) {
                 // Day headers
+                // Note: Use enumerated() to avoid duplicate IDs (T appears twice, S appears twice)
                 HStack(spacing: 4) {
-                    ForEach(["M", "T", "W", "T", "F", "S", "S"], id: \.self) { day in
+                    ForEach(Array(["M", "T", "W", "T", "F", "S", "S"].enumerated()), id: \.offset) { _, day in
                         Text(day)
                             .font(AppTypography.miniLabel)
                             .foregroundStyle(AppColors.textTertiary)
@@ -288,10 +307,17 @@ struct ActivityCalendarSection: View {
 
                 // Weeks
                 VStack(spacing: 4) {
-                    ForEach(Array(calendarData.enumerated()), id: \.offset) { _, week in
+                    ForEach(Array(calendarGrid.enumerated()), id: \.offset) { _, week in
                         HStack(spacing: 4) {
-                            ForEach(Array(week.enumerated()), id: \.offset) { _, day in
-                                CalendarDayView(day: day)
+                            ForEach(Array(week.enumerated()), id: \.offset) { dayIndex, dayData in
+                                if let data = dayData {
+                                    CalendarDayView(data: data)
+                                } else {
+                                    // Placeholder for days outside our data range
+                                    let today = Date()
+                                    let placeholderDay = calendar.component(.day, from: today)
+                                    CalendarDayViewPlaceholder(day: placeholderDay)
+                                }
                             }
                         }
                     }
@@ -306,32 +332,31 @@ struct ActivityCalendarSection: View {
     }
 }
 
-struct CalendarDay {
-    let day: Int
-    let isToday: Bool
-    let isFuture: Bool
-    let workout: CalendarWorkout?
-}
+struct CalendarDayView: View {
+    let data: CalendarDayData
 
-struct CalendarWorkout {
-    let type: WorkoutType
-    let feeling: Feeling
+    private let calendar = Calendar.current
 
-    enum Feeling {
-        case good, moderate, hard
+    private var day: Int {
+        calendar.component(.day, from: data.date)
+    }
 
-        var color: Color {
-            switch self {
-            case .good: return AppColors.olive
-            case .moderate: return AppColors.navy.opacity(0.5)
-            case .hard: return AppColors.coral
-            }
+    private var isToday: Bool {
+        calendar.isDateInToday(data.date)
+    }
+
+    private var isFuture: Bool {
+        data.date > Date()
+    }
+
+    private var feelingColor: Color {
+        switch data.feeling {
+        case .good: return AppColors.olive
+        case .moderate: return AppColors.navy.opacity(0.5)
+        case .hard: return AppColors.coral
+        case .none: return .clear
         }
     }
-}
-
-struct CalendarDayView: View {
-    let day: CalendarDay
 
     var body: some View {
         ZStack {
@@ -340,15 +365,15 @@ struct CalendarDayView: View {
                 .frame(height: 36)
 
             VStack(spacing: 1) {
-                Text("\(day.day)")
-                    .font(.system(size: 11, weight: day.isToday ? .bold : .medium))
+                Text("\(day)")
+                    .font(.system(size: 11, weight: isToday ? .bold : .medium))
                     .foregroundStyle(textColor)
 
-                if let workout = day.workout {
+                if data.hasWorkout {
                     Circle()
-                        .fill(workout.feeling.color)
+                        .fill(feelingColor)
                         .frame(width: 6, height: 6)
-                } else if !day.isFuture {
+                } else if !isFuture {
                     Circle()
                         .fill(Color.clear)
                         .frame(width: 6, height: 6)
@@ -359,23 +384,40 @@ struct CalendarDayView: View {
     }
 
     private var backgroundColor: Color {
-        if day.isToday {
+        if isToday {
             return AppColors.navy.opacity(0.1)
         }
-        if day.workout != nil {
-            return day.workout!.feeling.color.opacity(0.1)
+        if data.hasWorkout {
+            return feelingColor.opacity(0.1)
         }
         return Color.clear
     }
 
     private var textColor: Color {
-        if day.isFuture {
+        if isFuture {
             return AppColors.textTertiary.opacity(0.5)
         }
-        if day.isToday {
+        if isToday {
             return AppColors.navy
         }
         return AppColors.textSecondary
+    }
+}
+
+struct CalendarDayViewPlaceholder: View {
+    let day: Int
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.clear)
+                .frame(height: 36)
+
+            Text("\(day)")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(AppColors.textTertiary.opacity(0.3))
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -398,6 +440,8 @@ struct CalendarLegend: View {
 // MARK: - Trend Charts Section
 
 struct TrendChartsSection: View {
+    let trends: [MetricTrend]
+
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.Layout.cardSpacing) {
             Text("Metrics")
@@ -406,32 +450,9 @@ struct TrendChartsSection: View {
                 .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
 
             VStack(spacing: AppSpacing.Layout.cardSpacing) {
-                TrendChartRow(
-                    title: "HRV Trend",
-                    value: "48ms",
-                    change: "+12%",
-                    isPositive: true,
-                    data: [0.4, 0.45, 0.42, 0.5, 0.55, 0.52, 0.6, 0.58, 0.65, 0.62],
-                    color: AppColors.olive
-                )
-
-                TrendChartRow(
-                    title: "Workout Difficulty",
-                    value: "Moderate",
-                    change: "Stable",
-                    isPositive: true,
-                    data: [0.6, 0.55, 0.58, 0.5, 0.52, 0.48, 0.5, 0.45, 0.48, 0.45],
-                    color: AppColors.navy
-                )
-
-                TrendChartRow(
-                    title: "Recovery Score",
-                    value: "78",
-                    change: "+8%",
-                    isPositive: true,
-                    data: [0.6, 0.62, 0.58, 0.65, 0.7, 0.68, 0.72, 0.75, 0.78, 0.78],
-                    color: AppColors.coral
-                )
+                ForEach(trends) { trend in
+                    TrendChartRow(trend: trend)
+                }
             }
             .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
         }
@@ -439,36 +460,47 @@ struct TrendChartsSection: View {
 }
 
 struct TrendChartRow: View {
-    let title: String
-    let value: String
-    let change: String
-    let isPositive: Bool
-    let data: [CGFloat]
-    let color: Color
+    let trend: MetricTrend
+
+    private var color: Color {
+        switch trend.color {
+        case "olive": return AppColors.olive
+        case "coral": return AppColors.coral
+        case "navy": return AppColors.navy
+        default: return AppColors.navy
+        }
+    }
 
     var body: some View {
         HStack(spacing: AppSpacing.md) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title)
+                Text(trend.title)
                     .font(AppTypography.cardSubtitle)
                     .foregroundStyle(AppColors.textSecondary)
 
-                Text(value)
+                Text(trend.currentValue)
                     .font(AppTypography.statValue)
                     .foregroundStyle(AppColors.textPrimary)
 
                 HStack(spacing: 4) {
-                    Image(systemName: isPositive ? "arrow.up.right" : "arrow.down.right")
+                    Image(systemName: trend.isPositive ? "arrow.up.right" : "arrow.down.right")
                         .font(.system(size: 10, weight: .bold))
-                    Text(change)
+                    Text(trend.change)
                         .font(AppTypography.statLabel)
                 }
-                .foregroundStyle(isPositive ? AppColors.olive : AppColors.coral)
+                .foregroundStyle(trend.isPositive ? AppColors.olive : AppColors.coral)
             }
             .frame(width: 100, alignment: .leading)
 
-            TrendSparkline(data: data, color: color)
-                .frame(height: 40)
+            if !trend.dataPoints.isEmpty {
+                TrendSparkline(data: trend.dataPoints, color: color)
+                    .frame(height: 40)
+            } else {
+                Spacer()
+                Text("No data")
+                    .font(AppTypography.statLabel)
+                    .foregroundStyle(AppColors.textTertiary)
+            }
         }
         .padding(AppSpacing.Layout.cardPadding)
         .background(AppColors.cardBackground)

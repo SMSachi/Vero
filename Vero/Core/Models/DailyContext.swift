@@ -1,6 +1,9 @@
 //
 //  DailyContext.swift
-//  Vero
+//  Insio Health
+//
+//  Extended daily_contexts data model for Supabase sync.
+//  Includes sleep, water, nutrition, and weight (if goal == weight_loss).
 //
 
 import Foundation
@@ -8,18 +11,53 @@ import Foundation
 struct DailyContext: Identifiable, Codable {
     let id: UUID
     let date: Date
-    let sleepHours: Double
-    let sleepQuality: SleepQuality
-    let stressLevel: StressLevel
-    let energyLevel: EnergyLevel
-    let restingHeartRate: Int?
-    let hrvScore: Double?
-    let readinessScore: Int
+
+    // MARK: - Sleep Data
+    var sleepHours: Double
+    var sleepQuality: SleepQuality
+
+    // MARK: - Energy & Stress
+    var stressLevel: StressLevel
+    var energyLevel: EnergyLevel
+
+    // MARK: - Biometrics
+    var restingHeartRate: Int?
+    var hrvScore: Double?
+    var readinessScore: Int
+
+    // MARK: - Nutrition Data (extended)
+    var waterIntakeMl: Int?
+    var calories: Int?
+    var proteinGrams: Int?
+    var carbsGrams: Int?
+    var fatGrams: Int?
+
+    // MARK: - Weight Data (only tracked if goal == weight_loss)
+    var weightKg: Double?
+    var bodyFatPercentage: Double?
+
+    // MARK: - Computed Properties
 
     var dateFormatted: String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         return formatter.string(from: date)
+    }
+
+    /// Water intake in liters
+    var waterIntakeLiters: Double? {
+        guard let ml = waterIntakeMl else { return nil }
+        return Double(ml) / 1000.0
+    }
+
+    /// Whether nutrition data has been logged
+    var hasNutritionData: Bool {
+        waterIntakeMl != nil || calories != nil || proteinGrams != nil
+    }
+
+    /// Whether weight data has been logged
+    var hasWeightData: Bool {
+        weightKg != nil || bodyFatPercentage != nil
     }
 }
 

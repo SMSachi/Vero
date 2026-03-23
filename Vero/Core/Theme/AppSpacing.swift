@@ -1,6 +1,6 @@
 //
 //  AppSpacing.swift
-//  Vero
+//  Insio Health
 //
 //  Unified design system - spacing, sizing, and layout constants
 //

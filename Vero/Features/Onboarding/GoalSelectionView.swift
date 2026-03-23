@@ -1,8 +1,9 @@
 //
 //  GoalSelectionView.swift
-//  Vero
+//  Insio Health
 //
-//  Goals selection - unified design system
+//  Goals selection - unified design system.
+//  CRITICAL: Weight UI is ONLY shown if goal == weight_loss
 //
 
 import SwiftUI
@@ -60,7 +61,7 @@ struct GoalSelectionView: View {
             // SCROLLABLE GOAL GRID
             ScrollView(showsIndicators: false) {
                 LazyVGrid(columns: columns, spacing: AppSpacing.Layout.cardSpacing) {
-                    ForEach(FitnessGoal.allCases) { goal in
+                    ForEach(UserGoal.allCases) { goal in
                         CompactGoalCard(
                             goal: goal,
                             isSelected: state.selectedGoals.contains(goal)
@@ -68,8 +69,16 @@ struct GoalSelectionView: View {
                             withAnimation(AppAnimation.springBouncy) {
                                 if state.selectedGoals.contains(goal) {
                                     state.selectedGoals.remove(goal)
+                                    // Clear primary if removed
+                                    if state.primaryGoal == goal {
+                                        state.primaryGoal = state.selectedGoals.first
+                                    }
                                 } else {
                                     state.selectedGoals.insert(goal)
+                                    // Set as primary if first selection
+                                    if state.primaryGoal == nil {
+                                        state.primaryGoal = goal
+                                    }
                                 }
                             }
                         }
@@ -130,7 +139,7 @@ struct GoalSelectionView: View {
 // MARK: - Compact Goal Card
 
 private struct CompactGoalCard: View {
-    let goal: FitnessGoal
+    let goal: UserGoal
     let isSelected: Bool
     let action: () -> Void
 
@@ -157,14 +166,15 @@ private struct CompactGoalCard: View {
                     .minimumScaleFactor(0.85)
 
                 // Subtitle
-                Text(goal.subtitle)
+                Text(goal.description)
                     .font(AppTypography.miniLabel)
                     .foregroundStyle(AppColors.textTertiary)
                     .multilineTextAlignment(.center)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 110)
+            .frame(height: 120)
             .padding(.horizontal, 12)
             .padding(.vertical, 12)
             .background(isSelected ? AppColors.navy.opacity(0.08) : AppColors.cardBackground)
@@ -179,22 +189,6 @@ private struct CompactGoalCard: View {
             .standardShadow()
         }
         .buttonStyle(BounceButtonStyle())
-    }
-}
-
-// MARK: - Fitness Goal Extension
-
-extension FitnessGoal {
-    var subtitle: String {
-        switch self {
-        case .recovery: return "Rest & repair"
-        case .endurance: return "Aerobic capacity"
-        case .hardEffort: return "Push limits"
-        case .strength: return "Power & muscle"
-        case .mobility: return "Flexibility"
-        case .conditioning: return "Heart health"
-        case .generalFitness: return "Overall wellness"
-        }
     }
 }
 

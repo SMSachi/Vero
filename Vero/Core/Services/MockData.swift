@@ -1,6 +1,6 @@
 //
 //  MockData.swift
-//  Vero
+//  Insio Health
 //
 
 import Foundation
