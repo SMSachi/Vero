@@ -18,7 +18,8 @@ struct TrendInsight: Identifiable, Codable {
 
     var isPositive: Bool {
         switch metric {
-        case .restingHeartRate, .recoveryTime:
+        case .restingHeartRate, .recoveryTime, .weight:
+            // Lower is better for these metrics
             return changePercentage < 0
         default:
             return changePercentage > 0
@@ -59,6 +60,9 @@ enum TrendMetric: String, Codable, CaseIterable {
     case sleepQuality = "Sleep Quality"
     case recoveryTime = "Recovery Time"
     case consistency = "Consistency"
+    case weight = "Weight"
+    case nutrition = "Nutrition"
+    case hydration = "Hydration"
 }
 
 enum Timeframe: String, Codable, CaseIterable {

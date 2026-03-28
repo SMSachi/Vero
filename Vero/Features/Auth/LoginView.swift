@@ -138,40 +138,31 @@ struct LoginView: View {
     private func login() {
         guard isFormValid else { return }
 
-        print("🔐 LoginView: [v2] login() started")
+        print("🔐 LoginView: [v4] login() STARTED")
 
-        // CRITICAL: Dismiss keyboard FIRST before any async work
+        // Dismiss keyboard
         focusedField = nil
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 
-        // Force end editing on all windows
-        for scene in UIApplication.shared.connectedScenes {
-            if let windowScene = scene as? UIWindowScene {
-                for window in windowScene.windows {
-                    window.endEditing(true)
-                }
-            }
-        }
-
         isSubmitting = true
 
-        Task {
-            // Small delay to let keyboard dismiss complete
-            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-
+        Task { @MainActor in
             do {
-                print("🔐 LoginView: [v2] Calling authService.signIn...")
+                print("🔐 LoginView: [v4] Calling authService.signIn...")
                 try await authService.signIn(email: email, password: password)
-                print("🔐 LoginView: [v2] ✅ signIn completed successfully")
+                print("🔐 LoginView: [v4] ✅ signIn returned, isAuthenticated=\(authService.isAuthenticated)")
+
+                // Reset state - view will be replaced by MainTabView
+                isSubmitting = false
+
+                // Post notification to force UI transition
+                NotificationCenter.default.post(name: .authStateDidChange, object: nil)
+                print("🔐 LoginView: [v4] ✅ DONE - posted authStateDidChange notification")
+
             } catch {
-                print("🔐 LoginView: [v2] ❌ signIn failed: \(error)")
-                await MainActor.run {
-                    isSubmitting = false
-                }
+                print("🔐 LoginView: [v4] ❌ Error: \(error)")
+                isSubmitting = false
             }
-            // Note: isSubmitting is NOT set to false here on success
-            // The view will be replaced by MainTabView, so no need
-            print("🔐 LoginView: [v2] login() task finished")
         }
     }
 }
@@ -180,75 +171,75 @@ struct LoginView: View {
 
 struct TermsAcceptanceCheckbox: View {
     @Binding var isAccepted: Bool
+    @State private var showTerms = false
+    @State private var showPrivacy = false
 
     var body: some View {
-        Button {
-            withAnimation(AppAnimation.springQuick) {
-                isAccepted.toggle()
-            }
-        } label: {
-            HStack(alignment: .top, spacing: AppSpacing.sm) {
-                // Checkbox
-                ZStack {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .stroke(isAccepted ? AppColors.navy : AppColors.divider, lineWidth: 2)
-                        .frame(width: 20, height: 20)
-
-                    if isAccepted {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            Button {
+                withAnimation(AppAnimation.springQuick) {
+                    isAccepted.toggle()
+                }
+            } label: {
+                HStack(alignment: .top, spacing: AppSpacing.sm) {
+                    // Checkbox
+                    ZStack {
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(AppColors.navy)
+                            .stroke(isAccepted ? AppColors.navy : AppColors.divider, lineWidth: 2)
                             .frame(width: 20, height: 20)
 
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.white)
+                        if isAccepted {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(AppColors.navy)
+                                .frame(width: 20, height: 20)
+
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
                     }
+
+                    // Text
+                    Text("I agree to the Terms of Service and Privacy Policy")
+                        .font(AppTypography.bodySmall)
+                        .foregroundStyle(AppColors.textSecondary)
+                        .multilineTextAlignment(.leading)
+
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+
+            // In-app links for Terms and Privacy
+            HStack(spacing: AppSpacing.md) {
+                Spacer().frame(width: 20) // Align with text above
+
+                Button {
+                    showTerms = true
+                } label: {
+                    Text("Terms of Service")
+                        .font(AppTypography.captionSmall)
+                        .foregroundStyle(AppColors.navy)
+                        .underline()
                 }
 
-                // Text with links
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("I agree to the ")
-                        .font(AppTypography.bodySmall)
-                        .foregroundStyle(AppColors.textSecondary)
-                    +
-                    Text("Terms of Service")
-                        .font(AppTypography.bodySmall)
-                        .foregroundStyle(AppColors.navy)
-                        .underline()
-                    +
-                    Text(" and ")
-                        .font(AppTypography.bodySmall)
-                        .foregroundStyle(AppColors.textSecondary)
-                    +
+                Button {
+                    showPrivacy = true
+                } label: {
                     Text("Privacy Policy")
-                        .font(AppTypography.bodySmall)
+                        .font(AppTypography.captionSmall)
                         .foregroundStyle(AppColors.navy)
                         .underline()
                 }
-                .multilineTextAlignment(.leading)
 
                 Spacer()
             }
         }
-        .buttonStyle(.plain)
-        .overlay(alignment: .leading) {
-            // Invisible link buttons for Terms and Privacy
-            HStack(spacing: 0) {
-                Spacer().frame(width: 28) // Checkbox + spacing
-
-                // Terms link
-                Link(destination: InsioConfig.Legal.termsOfServiceURL) {
-                    Color.clear
-                        .frame(width: 100, height: 20)
-                }
-
-                // Privacy link
-                Link(destination: InsioConfig.Legal.privacyPolicyURL) {
-                    Color.clear
-                        .frame(width: 90, height: 20)
-                }
-            }
-            .allowsHitTesting(true)
+        .sheet(isPresented: $showTerms) {
+            TermsOfServiceView()
+        }
+        .sheet(isPresented: $showPrivacy) {
+            PrivacyView()
         }
     }
 }

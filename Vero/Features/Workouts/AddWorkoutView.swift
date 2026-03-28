@@ -204,8 +204,9 @@ struct AddWorkoutView: View {
         let endDate = Date()
         let startDate = endDate.addingTimeInterval(-Double(durationMinutes * 60))
 
-        // Estimate calories based on type and duration
-        let estimatedCalories = estimateCalories(type: selectedType, minutes: durationMinutes, effort: perceivedEffort)
+        // NOTE: Calories set to 0 for manual workouts per calorie display rule
+        // Calories are only shown when they come from Apple Health/Watch
+        // or are explicitly entered by the user (not estimated)
 
         // Create workout with proper source tracking
         var workout = Workout(
@@ -214,7 +215,7 @@ struct AddWorkoutView: View {
             startDate: startDate,
             endDate: endDate,
             duration: Double(durationMinutes * 60),
-            calories: estimatedCalories,
+            calories: 0,  // No fake calories - only real data from HealthKit
             averageHeartRate: nil,
             maxHeartRate: nil,
             intensity: mapEffortToIntensity(perceivedEffort),
@@ -259,6 +260,11 @@ struct AddWorkoutView: View {
 
         // Mark the check-in as completed so we don't show the modal
         WorkoutMonitor.shared.postWorkoutCheckInCompleted(for: workout.id)
+
+        // BROADCAST: Unified data pipeline
+        DataBroadcaster.shared.workoutSaved(id: workout.id)
+        DataBroadcaster.shared.checkInSaved(workoutId: workout.id)
+        print("📱 AddWorkoutView: ✅ Broadcast sent")
 
         print("📱 AddWorkoutView: PHASE 1 COMPLETE - Local data saved")
         print("📱 AddWorkoutView: ══════════════════════════════════════")

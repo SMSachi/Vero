@@ -18,6 +18,8 @@ struct AuthContainerView: View {
     @State private var acceptedTerms = false
 
     var body: some View {
+        // NOTE: This view is only mounted when AppRootView route == .auth
+        // No need to check isAuthenticated here - AppRootView handles routing
         ZStack {
             // Background
             AppColors.background
@@ -66,7 +68,7 @@ struct AuthContainerView: View {
             }
         }
         .onDisappear {
-            print("🔐 AuthContainerView: DISAPPEARED - view removed from hierarchy")
+            print("🔐 AuthContainerView: DISAPPEARED")
         }
     }
 }

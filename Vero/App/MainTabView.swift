@@ -11,7 +11,6 @@ struct MainTabView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: Tab = .home
-    @State private var showDebugAlert = false  // DEBUG: Alert to prove view appeared
 
     enum Tab: Int, CaseIterable {
         case home
@@ -98,19 +97,6 @@ struct MainTabView: View {
             print("📱 ══════════════════════════════════════════════════")
             // Check for pending check-ins when app first appears
             appState.checkForPendingCheckIns()
-
-            // DEBUG: Show alert to PROVE this view appeared
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                showDebugAlert = true
-            }
-        }
-        // DEBUG ALERT - If you see this, MainTabView IS visible
-        .alert("SUCCESS!", isPresented: $showDebugAlert) {
-            Button("OK - I see the main app!") {
-                showDebugAlert = false
-            }
-        } message: {
-            Text("MainTabView appeared! If you see this alert, the routing worked and you should see the home screen behind this alert.")
         }
         .onChange(of: appState.showPostWorkoutCheckIn) { _, show in
             print("📱 MainTabView: showPostWorkoutCheckIn changed to \(show)")

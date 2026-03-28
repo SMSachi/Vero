@@ -25,6 +25,7 @@ struct ProfileView: View {
     @State private var showPreferences = false
     @State private var showPaywall = false
     @State private var showAccountDeletion = false
+    @State private var showGoalSettings = false
 
     // Stats (loaded in onAppear to avoid blocking body evaluation)
     @State private var totalWorkouts: Int = 0
@@ -59,17 +60,22 @@ struct ProfileView: View {
                     .opacity(contentVisible ? 1 : 0)
                     .offset(y: contentVisible ? 0 : 15)
 
-                    // Account Section
+                    // Account Section (without delete account)
                     AccountSection(
                         isAuthenticated: authService.isAuthenticated,
                         isSyncing: syncService.isSyncing,
                         lastSyncDate: syncService.lastSyncDate,
                         onSignOut: { showSignOutConfirmation = true },
                         onSync: performSync,
-                        onDeleteAccount: { showAccountDeletion = true }
+                        onDeleteAccount: nil  // Moved to danger zone
                     )
                     .opacity(contentVisible ? 1 : 0)
                     .offset(y: contentVisible ? 0 : 15)
+
+                    // Unit Preferences Section
+                    UnitPreferencesSection()
+                        .opacity(contentVisible ? 1 : 0)
+                        .offset(y: contentVisible ? 0 : 15)
 
                     // Stats (values loaded in onAppear)
                     StatsSection(
@@ -77,6 +83,11 @@ struct ProfileView: View {
                         currentStreak: currentStreak,
                         longestStreak: longestStreak
                     )
+                        .opacity(contentVisible ? 1 : 0)
+                        .offset(y: contentVisible ? 0 : 15)
+
+                    // Goal Section - allows user to change fitness goal
+                    GoalSection(showGoalSettings: $showGoalSettings)
                         .opacity(contentVisible ? 1 : 0)
                         .offset(y: contentVisible ? 0 : 15)
 
@@ -98,6 +109,13 @@ struct ProfileView: View {
                     // About
                     AboutSection()
                         .opacity(contentVisible ? 1 : 0)
+
+                    // Danger Zone (Delete Account) - At VERY bottom, visually separated
+                    if authService.isAuthenticated {
+                        DangerZoneSection(onDeleteAccount: { showAccountDeletion = true })
+                            .opacity(contentVisible ? 1 : 0)
+                            .padding(.top, AppSpacing.lg)
+                    }
                 }
                 .padding(.top, AppSpacing.Layout.topPadding)
                 .padding(.bottom, AppSpacing.Layout.bottomScrollPadding)
@@ -136,6 +154,9 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showAccountDeletion) {
             AccountDeletionView()
+        }
+        .sheet(isPresented: $showGoalSettings) {
+            GoalSettingsView()
         }
     }
 
@@ -601,6 +622,70 @@ struct StatCard: View {
     }
 }
 
+// MARK: - Goal Section
+
+struct GoalSection: View {
+    @Binding var showGoalSettings: Bool
+    @StateObject private var goalService = UserGoalService.shared
+
+    private var currentGoalText: String {
+        if let goal = goalService.primaryGoal {
+            return goal.rawValue
+        }
+        return "Not set"
+    }
+
+    private var goalIcon: String {
+        goalService.primaryGoal?.icon ?? "target"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            Text("Fitness Goal")
+                .font(AppTypography.sectionHeader)
+                .foregroundStyle(AppColors.textPrimary)
+                .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
+
+            Button(action: { showGoalSettings = true }) {
+                HStack(spacing: AppSpacing.md) {
+                    ZStack {
+                        Circle()
+                            .fill(AppColors.navy.opacity(0.12))
+                            .frame(width: AppSpacing.Icon.circleMedium, height: AppSpacing.Icon.circleMedium)
+
+                        Image(systemName: goalIcon)
+                            .font(.system(size: AppSpacing.Icon.medium, weight: .medium))
+                            .foregroundStyle(AppColors.navy)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(currentGoalText)
+                            .font(AppTypography.cardTitle)
+                            .foregroundStyle(AppColors.textPrimary)
+
+                        Text("Tap to change your fitness goal")
+                            .font(AppTypography.caption)
+                            .foregroundStyle(AppColors.textTertiary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: AppSpacing.Icon.small, weight: .semibold))
+                        .foregroundStyle(AppColors.textTertiary)
+                }
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.vertical, AppSpacing.sm)
+            }
+            .buttonStyle(.plain)
+            .background(AppColors.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.Layout.cardRadius, style: .continuous))
+            .standardShadow()
+            .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
+        }
+    }
+}
+
 // MARK: - Demo Section
 
 struct DemoSection: View {
@@ -853,6 +938,118 @@ struct RowButtonStyle: ButtonStyle {
                 isPressed = newValue
             }
             .animation(AppAnimation.smoothFast, value: configuration.isPressed)
+    }
+}
+
+// MARK: - Unit Preferences Section
+
+struct UnitPreferencesSection: View {
+    @StateObject private var unitPrefs = UnitPreferences.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            Text("Units")
+                .font(AppTypography.sectionHeader)
+                .foregroundStyle(AppColors.textPrimary)
+                .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
+
+            VStack(spacing: 0) {
+                ForEach(UnitSystem.allCases, id: \.self) { system in
+                    Button {
+                        unitPrefs.setUnitSystem(system)
+                    } label: {
+                        HStack(spacing: AppSpacing.md) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(system == .metric ? "Metric" : "Imperial")
+                                    .font(AppTypography.cardTitle)
+                                    .foregroundStyle(AppColors.textPrimary)
+
+                                Text(system.displayName)
+                                    .font(AppTypography.caption)
+                                    .foregroundStyle(AppColors.textTertiary)
+                            }
+
+                            Spacer()
+
+                            if unitPrefs.unitSystem == system {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundStyle(AppColors.olive)
+                            } else {
+                                Circle()
+                                    .stroke(AppColors.divider, lineWidth: 2)
+                                    .frame(width: 20, height: 20)
+                            }
+                        }
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.sm)
+                    }
+
+                    if system == .metric {
+                        Divider()
+                            .padding(.leading, AppSpacing.md)
+                    }
+                }
+            }
+            .background(AppColors.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.Layout.cardRadius, style: .continuous))
+            .standardShadow()
+            .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
+        }
+    }
+}
+
+// MARK: - Danger Zone Section
+
+struct DangerZoneSection: View {
+    let onDeleteAccount: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            Text("Danger Zone")
+                .font(AppTypography.sectionHeader)
+                .foregroundStyle(AppColors.error)
+                .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
+
+            Button(action: onDeleteAccount) {
+                HStack(spacing: AppSpacing.md) {
+                    ZStack {
+                        Circle()
+                            .fill(AppColors.error.opacity(0.12))
+                            .frame(width: AppSpacing.Icon.circleMedium, height: AppSpacing.Icon.circleMedium)
+
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: AppSpacing.Icon.medium, weight: .medium))
+                            .foregroundStyle(AppColors.error)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Delete Account")
+                            .font(AppTypography.cardTitle)
+                            .foregroundStyle(AppColors.error)
+
+                        Text("Permanently delete your account and all data")
+                            .font(AppTypography.caption)
+                            .foregroundStyle(AppColors.textTertiary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: AppSpacing.Icon.small, weight: .semibold))
+                        .foregroundStyle(AppColors.textTertiary)
+                }
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.vertical, AppSpacing.sm)
+            }
+            .background(AppColors.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.Layout.cardRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppSpacing.Layout.cardRadius, style: .continuous)
+                    .stroke(AppColors.error.opacity(0.3), lineWidth: 1)
+            )
+            .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
+        }
     }
 }
 

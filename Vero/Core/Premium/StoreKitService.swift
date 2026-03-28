@@ -104,6 +104,19 @@ final class StoreKitService: ObservableObject {
         productsUnavailable = false
         productsUnavailableReason = .none
 
+        // Early exit for simulator with clear messaging
+        #if targetEnvironment(simulator)
+        print("🛒 StoreKit: ══════════════════════════════════════════════════")
+        print("🛒 StoreKit: ⚠️ SIMULATOR DETECTED")
+        print("🛒 StoreKit: StoreKit functionality is limited in simulator.")
+        print("🛒 StoreKit: Test purchases on a real device or TestFlight.")
+        print("🛒 StoreKit: ══════════════════════════════════════════════════")
+        productsUnavailable = true
+        productsUnavailableReason = .simulator
+        isLoading = false
+        return
+        #endif
+
         do {
             print("🛒 StoreKit: Loading products...")
             let productIDs = InsioConfig.StoreKit.allProductIDs
@@ -114,32 +127,18 @@ final class StoreKitService: ObservableObject {
             // Check if we got any products
             if storeProducts.isEmpty {
                 print("🛒 StoreKit: ⚠️ No products returned from App Store")
-
-                // Determine the reason
-                if isSimulator {
-                    print("🛒 StoreKit: Running in simulator - this is expected")
-                    productsUnavailableReason = .simulator
-                } else {
-                    print("🛒 StoreKit: No active account or products not configured")
-                    productsUnavailableReason = .noActiveAccount
-                }
-
+                print("🛒 StoreKit: No active account or products not configured")
+                productsUnavailableReason = .noActiveAccount
                 productsUnavailable = true
                 isLoading = false
                 return
             }
 
-            // Sort all products by tier, then by billing period (yearly first)
+            // Sort all products by tier (no yearly products at launch)
             products = storeProducts.sorted { p1, p2 in
                 let tier1 = tierForProduct(p1)
                 let tier2 = tierForProduct(p2)
-
-                if tier1 != tier2 {
-                    return tier1 < tier2
-                }
-
-                // Within same tier, yearly first
-                return isYearly(p1) && !isYearly(p2)
+                return tier1 < tier2
             }
 
             // Separate by tier
@@ -163,8 +162,6 @@ final class StoreKitService: ObservableObject {
                 productsUnavailableReason = .noActiveAccount
             } else if errorString.contains("network") || errorString.contains("connection") {
                 productsUnavailableReason = .networkError
-            } else if isSimulator {
-                productsUnavailableReason = .simulator
             } else {
                 productsUnavailableReason = .configurationError
             }

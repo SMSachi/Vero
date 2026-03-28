@@ -46,14 +46,17 @@ final class AuthService: ObservableObject {
         print("🔐 AuthService: ══════════════════════════════════════════════════")
 
         #if targetEnvironment(simulator)
-        // On simulator, set isLoading = false immediately to prevent hangs
+        // On simulator, set isLoading = false immediately to prevent hangs from HealthKit/network
+        // But DO NOT return early - we still need proper @Published observation to work
         print("🔐 AuthService: SIMULATOR - setting isLoading = false immediately")
         self.isLoading = false
-        return
-        #endif
-
+        // Note: We skip setupAuthStateListener on simulator because it can hang
+        // The signIn/signOut methods will update state directly
+        print("🔐 AuthService: SIMULATOR - skipping auth listener (direct state updates only)")
+        #else
         // Start listening for auth state changes
         setupAuthStateListener()
+        #endif
     }
 
     deinit {
@@ -330,9 +333,6 @@ final class AuthService: ObservableObject {
 
             print("🔐 AuthService: ✅ State updated: isAuthenticated=\(isAuthenticated), isLoading=\(isLoading)")
 
-            // Force SwiftUI to recognize the change
-            self.objectWillChange.send()
-
         } catch let error as AuthError {
             // Re-throw our custom errors
             print("🔐 AuthService: ❌ Auth error: \(error.localizedDescription)")
@@ -396,15 +396,12 @@ final class AuthService: ObservableObject {
             print("🔐 AuthService: ✅ Signin successful")
             print("🔐 AuthService: User: \(session.user.email ?? "unknown")")
 
-            // CRITICAL: Update state and force UI refresh
+            // Update state - @Published will notify observers
+            print("🔐 AuthService: Setting isAuthenticated=true...")
             self.currentUser = session.user
             self.isAuthenticated = true
             self.isLoading = false
-
-            print("🔐 AuthService: ✅ State updated: isAuthenticated=\(isAuthenticated), isLoading=\(isLoading)")
-
-            // Force SwiftUI to recognize the change
-            self.objectWillChange.send()
+            print("🔐 AuthService: ✅ State set: isAuthenticated=\(isAuthenticated)")
 
         } catch {
             print("🔐 AuthService: ❌ Signin error: \(error)")

@@ -713,6 +713,87 @@ struct PreferencesView: View {
     }
 }
 
+// MARK: - Goal Settings View
+
+struct GoalSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var goalService = UserGoalService.shared
+    @State private var selectedGoal: UserGoal?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(UserGoal.allCases) { goal in
+                        Button {
+                            selectedGoal = goal
+                            goalService.setPrimaryGoal(goal)
+                        } label: {
+                            HStack(spacing: AppSpacing.md) {
+                                ZStack {
+                                    Circle()
+                                        .fill(goalColor(for: goal).opacity(0.12))
+                                        .frame(width: 40, height: 40)
+
+                                    Image(systemName: goal.icon)
+                                        .font(.system(size: 18, weight: .medium))
+                                        .foregroundStyle(goalColor(for: goal))
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(goal.rawValue)
+                                        .font(AppTypography.cardTitle)
+                                        .foregroundStyle(AppColors.textPrimary)
+
+                                    Text(goal.description)
+                                        .font(AppTypography.caption)
+                                        .foregroundStyle(AppColors.textSecondary)
+                                        .lineLimit(2)
+                                }
+
+                                Spacer()
+
+                                if selectedGoal == goal {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 22))
+                                        .foregroundStyle(AppColors.olive)
+                                }
+                            }
+                            .padding(.vertical, AppSpacing.xs)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } header: {
+                    Text("Select Your Primary Goal")
+                } footer: {
+                    Text("Your goal helps personalize workout insights and recovery recommendations. Weight tracking is only shown when \"Weight Loss\" is selected.")
+                }
+            }
+            .navigationTitle("Fitness Goal")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                selectedGoal = goalService.primaryGoal
+            }
+        }
+    }
+
+    private func goalColor(for goal: UserGoal) -> Color {
+        switch goal {
+        case .performance: return AppColors.coral
+        case .consistency: return AppColors.olive
+        case .recovery: return AppColors.navy
+        case .weightLoss: return AppColors.orange
+        }
+    }
+}
+
 // MARK: - Help View
 
 struct HelpView: View {
@@ -843,10 +924,81 @@ struct PrivacySection: View {
     }
 }
 
+// MARK: - Terms of Service View
+
+struct TermsOfServiceView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: AppSpacing.lg) {
+                    Text("Terms of Service")
+                        .font(AppTypography.screenTitle)
+
+                    VStack(alignment: .leading, spacing: AppSpacing.md) {
+                        PrivacySection(
+                            title: "Acceptance of Terms",
+                            content: "By downloading or using Insio, you agree to these Terms of Service. If you do not agree, please do not use the app."
+                        )
+
+                        PrivacySection(
+                            title: "Use of the Service",
+                            content: "Insio provides fitness tracking and workout insights. The app is intended for personal, non-commercial use. You must be at least 13 years old to use this service."
+                        )
+
+                        PrivacySection(
+                            title: "Health Information",
+                            content: "Insio is not a medical device and does not provide medical advice. The insights and recommendations are for informational purposes only. Always consult a healthcare professional before starting any fitness program."
+                        )
+
+                        PrivacySection(
+                            title: "Account Responsibility",
+                            content: "You are responsible for maintaining the confidentiality of your account. You agree to notify us immediately of any unauthorized use of your account."
+                        )
+
+                        PrivacySection(
+                            title: "Subscription & Billing",
+                            content: "Premium features require a subscription. Subscriptions auto-renew unless cancelled at least 24 hours before the renewal date. You can manage subscriptions in your App Store settings."
+                        )
+
+                        PrivacySection(
+                            title: "Limitation of Liability",
+                            content: "Insio is provided \"as is\" without warranties of any kind. We are not liable for any damages arising from your use of the app, including but not limited to fitness-related injuries."
+                        )
+
+                        PrivacySection(
+                            title: "Changes to Terms",
+                            content: "We may update these terms from time to time. Continued use of the app after changes constitutes acceptance of the new terms."
+                        )
+
+                        PrivacySection(
+                            title: "Contact",
+                            content: "For questions about these Terms of Service, contact us at support@insiohealth.com."
+                        )
+                    }
+                }
+                .padding(AppSpacing.Layout.horizontalMargin)
+            }
+            .background(AppColors.background)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - About Insio View
 
 struct AboutInsioView: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var showPrivacy = false
+    @State private var showTerms = false
 
     var body: some View {
         NavigationStack {
@@ -886,15 +1038,17 @@ struct AboutInsioView: View {
                             .foregroundStyle(AppColors.textTertiary)
                     }
 
-                    // Legal Links
+                    // Legal Links (in-app)
                     VStack(spacing: AppSpacing.sm) {
-                        Link(destination: InsioConfig.Legal.privacyPolicyURL) {
+                        Button {
+                            showPrivacy = true
+                        } label: {
                             HStack {
                                 Text("Privacy Policy")
                                     .font(AppTypography.bodySmall)
                                     .foregroundStyle(AppColors.navy)
                                 Spacer()
-                                Image(systemName: "arrow.up.right")
+                                Image(systemName: "chevron.right")
                                     .font(.system(size: 12, weight: .medium))
                                     .foregroundStyle(AppColors.textTertiary)
                             }
@@ -903,13 +1057,15 @@ struct AboutInsioView: View {
                             .clipShape(RoundedRectangle(cornerRadius: AppSpacing.radiusMedium, style: .continuous))
                         }
 
-                        Link(destination: InsioConfig.Legal.termsOfServiceURL) {
+                        Button {
+                            showTerms = true
+                        } label: {
                             HStack {
                                 Text("Terms of Service")
                                     .font(AppTypography.bodySmall)
                                     .foregroundStyle(AppColors.navy)
                                 Spacer()
-                                Image(systemName: "arrow.up.right")
+                                Image(systemName: "chevron.right")
                                     .font(.system(size: 12, weight: .medium))
                                     .foregroundStyle(AppColors.textTertiary)
                             }
@@ -931,6 +1087,12 @@ struct AboutInsioView: View {
                         dismiss()
                     }
                 }
+            }
+            .sheet(isPresented: $showPrivacy) {
+                PrivacyView()
+            }
+            .sheet(isPresented: $showTerms) {
+                TermsOfServiceView()
             }
         }
     }

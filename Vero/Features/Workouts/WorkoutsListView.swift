@@ -261,13 +261,22 @@ struct FilterChip: View {
 struct MinimalWorkoutCard: View {
     let workout: Workout
 
+    /// Color coding based on workout type for better visual distinction
     private var accentColor: Color {
-        switch workout.intensity {
-        case .low: return AppColors.olive
-        case .moderate: return AppColors.navy
-        case .high: return AppColors.coral
-        case .max: return AppColors.orange
+        switch workout.type {
+        case .run, .walk: return AppColors.burntOrange
+        case .strength: return AppColors.navy
+        case .cycle: return AppColors.olive
+        case .swim: return AppColors.waterAccent
+        case .hiit: return AppColors.coral
+        case .yoga: return AppColors.olive.opacity(0.8)
+        case .other: return AppColors.navy.opacity(0.8)
         }
+    }
+
+    /// Subtle gradient colors for the accent strip
+    private var gradientColors: [Color] {
+        [accentColor.opacity(0.8), accentColor]
     }
 
     private var dateLabel: String {
@@ -295,59 +304,84 @@ struct MinimalWorkoutCard: View {
     }
 
     var body: some View {
-        HStack(spacing: AppSpacing.md) {
-            // Type icon
-            ZStack {
-                Circle()
-                    .fill(accentColor.opacity(0.1))
-                    .frame(width: AppSpacing.Icon.circleMedium, height: AppSpacing.Icon.circleMedium)
+        HStack(spacing: 0) {
+            // Left accent strip with gradient
+            RoundedRectangle(cornerRadius: 2)
+                .fill(
+                    LinearGradient(
+                        colors: gradientColors,
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: 4)
+                .padding(.vertical, 8)
 
-                Image(systemName: workout.type.icon)
-                    .font(.system(size: AppSpacing.Icon.large, weight: .medium))
-                    .foregroundStyle(accentColor)
-            }
+            HStack(spacing: AppSpacing.md) {
+                // Type icon with enhanced styling
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [accentColor.opacity(0.15), accentColor.opacity(0.08)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: AppSpacing.Icon.circleMedium, height: AppSpacing.Icon.circleMedium)
 
-            // Content
-            VStack(alignment: .leading, spacing: 4) {
-                // Type + date
-                HStack {
-                    Text(workout.type.rawValue)
-                        .font(AppTypography.cardTitle)
-                        .foregroundStyle(AppColors.textPrimary)
-
-                    Text("\u{00B7}")
-                        .foregroundStyle(AppColors.textTertiary)
-
-                    Text(dateLabel)
-                        .font(AppTypography.caption)
-                        .foregroundStyle(AppColors.textTertiary)
+                    Image(systemName: workout.type.icon)
+                        .font(.system(size: AppSpacing.Icon.large, weight: .medium))
+                        .foregroundStyle(accentColor)
                 }
 
-                // One sentence insight
-                Text(oneLiner)
-                    .font(AppTypography.cardBody)
-                    .foregroundStyle(AppColors.textSecondary)
-                    .lineLimit(1)
-            }
+                // Content
+                VStack(alignment: .leading, spacing: 4) {
+                    // Type + date
+                    HStack {
+                        Text(workout.type.rawValue)
+                            .font(AppTypography.cardTitle)
+                            .foregroundStyle(AppColors.textPrimary)
 
-            Spacer()
+                        Text("\u{00B7}")
+                            .foregroundStyle(AppColors.textTertiary)
 
-            // Metrics compact
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(workout.durationFormatted)
-                    .font(AppTypography.cardSubtitle)
-                    .foregroundStyle(AppColors.textPrimary)
+                        Text(dateLabel)
+                            .font(AppTypography.caption)
+                            .foregroundStyle(AppColors.textTertiary)
+                    }
 
-                Text("\(workout.calories) cal")
-                    .font(AppTypography.miniLabel)
+                    // One sentence insight
+                    Text(oneLiner)
+                        .font(AppTypography.cardBody)
+                        .foregroundStyle(AppColors.textSecondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                // Metrics compact
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(workout.durationFormatted)
+                        .font(AppTypography.cardSubtitle)
+                        .foregroundStyle(AppColors.textPrimary)
+
+                    // Only show calories if from real data (HealthKit)
+                    if workout.calories > 0 {
+                        Text("\(workout.calories) cal")
+                            .font(AppTypography.miniLabel)
+                            .foregroundStyle(AppColors.textTertiary)
+                    }
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: AppSpacing.Icon.small, weight: .semibold))
                     .foregroundStyle(AppColors.textTertiary)
             }
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: AppSpacing.Icon.small, weight: .semibold))
-                .foregroundStyle(AppColors.textTertiary)
+            .padding(.leading, AppSpacing.sm)
+            .padding(.trailing, AppSpacing.Layout.cardPadding)
+            .padding(.vertical, AppSpacing.Layout.cardPadding)
         }
-        .padding(AppSpacing.Layout.cardPadding)
         .background(AppColors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.Layout.cardRadius, style: .continuous))
         .standardShadow()

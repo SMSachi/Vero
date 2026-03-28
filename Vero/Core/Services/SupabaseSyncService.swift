@@ -252,9 +252,10 @@ final class SupabaseSyncService: ObservableObject {
 
             // Check if exists locally
             if let existing = persistenceService.fetchPersistedWorkout(id: workout.id) {
-                // Compare timestamps - cloud wins if newer
+                // Compare timestamps - cloud wins if newer (handle optional updatedAt)
                 let localUpdated = existing.updatedAt
-                if record.updatedAt > localUpdated {
+                let cloudUpdated = record.updatedAt ?? record.createdAt
+                if cloudUpdated > localUpdated {
                     persistenceService.saveWorkout(workout)
                     updatedCount += 1
                     print("☁️ SyncService: [WORKOUTS] 🔄 Updated: \(workout.id) (cloud newer)")
@@ -317,7 +318,7 @@ final class SupabaseSyncService: ObservableObject {
         print("☁️ SyncService: average_heart_rate: \(record.averageHeartRate?.description ?? "nil")")
         print("☁️ SyncService: max_heart_rate: \(record.maxHeartRate?.description ?? "nil")")
         print("☁️ SyncService: created_at: \(record.createdAt)")
-        print("☁️ SyncService: updated_at: \(record.updatedAt)")
+        print("☁️ SyncService: NOTE: updated_at is handled by Supabase trigger, not sent from client")
 
         // Print actual JSON payload for debugging
         record.debugPrintJSON()
@@ -451,53 +452,67 @@ final class SupabaseSyncService: ObservableObject {
 
     /// Sync a single daily context
     func syncDailyContext(_ context: DailyContext) async {
-        print("☁️ SyncService: ══════════════════════════════════════════════════")
-        print("☁️ SyncService: SYNC DAILY CONTEXT")
-        print("☁️ SyncService: ══════════════════════════════════════════════════")
-        print("☁️ SyncService: Context ID: \(context.id)")
-        print("☁️ SyncService: Date: \(context.date)")
-        print("☁️ SyncService: Sleep Hours: \(context.sleepHours)")
-        print("☁️ SyncService: Auth State: isAuthenticated=\(authService.isAuthenticated)")
+        print("📊 DAILY_CONTEXT SYNC ══════════════════════════════════════════════════")
+        print("📊 DAILY_CONTEXT SYNC: Context ID: \(context.id)")
+        print("📊 DAILY_CONTEXT SYNC: Date: \(context.date)")
+        print("📊 DAILY_CONTEXT SYNC: isAuthenticated = \(authService.isAuthenticated)")
+        print("📊 DAILY_CONTEXT SYNC: userId = \(authService.userId?.uuidString ?? "NIL")")
 
         guard authService.isAuthenticated,
               let userId = authService.userId else {
-            print("☁️ SyncService: [DAILY_CONTEXTS] ❌ ABORT - Not authenticated")
+            print("📊 DAILY_CONTEXT SYNC ERROR: Not authenticated - cannot sync")
             return
         }
 
         guard SupabaseConfig.isConfigured else {
-            print("☁️ SyncService: [DAILY_CONTEXTS] ❌ ABORT - Supabase not configured")
+            print("📊 DAILY_CONTEXT SYNC ERROR: Supabase not configured")
             return
         }
 
-        print("☁️ SyncService: [DAILY_CONTEXTS] User ID: \(userId)")
-
         let record = DailyContextSyncRecord(from: context, userId: userId)
 
-        // Log payload
-        print("☁️ SyncService: [DAILY_CONTEXTS] Payload:")
-        print("☁️ SyncService: [DAILY_CONTEXTS] id: \(record.id)")
-        print("☁️ SyncService: [DAILY_CONTEXTS] user_id: \(record.userId)")
-        print("☁️ SyncService: [DAILY_CONTEXTS] date: \(record.date)")
-        print("☁️ SyncService: [DAILY_CONTEXTS] sleep_hours: \(record.sleepHours)")
-        print("☁️ SyncService: [DAILY_CONTEXTS] hrv_score: \(record.hrvScore?.description ?? "nil")")
+        // Log EXACT payload being sent
+        print("📊 DAILY_CONTEXT SYNC: ──────────────────────────────────────")
+        print("📊 DAILY_CONTEXT SYNC: TABLE NAME: \"daily_contexts\"")
+        print("📊 DAILY_CONTEXT SYNC: PAYLOAD:")
+        print("📊 DAILY_CONTEXT SYNC:   id = \(record.id)")
+        print("📊 DAILY_CONTEXT SYNC:   user_id = \(record.userId)")
+        print("📊 DAILY_CONTEXT SYNC:   date = \(record.date)")
+        print("📊 DAILY_CONTEXT SYNC:   sleep_hours = \(record.sleepHours?.description ?? "nil")")
+        print("📊 DAILY_CONTEXT SYNC:   sleep_quality = \(record.sleepQuality ?? "nil")")
+        print("📊 DAILY_CONTEXT SYNC:   water_ml = \(record.waterMl?.description ?? "nil")")
+        print("📊 DAILY_CONTEXT SYNC:   calories = \(record.calories?.description ?? "nil")")
+        print("📊 DAILY_CONTEXT SYNC:   protein_grams = \(record.proteinGrams?.description ?? "nil")")
+        print("📊 DAILY_CONTEXT SYNC:   carbs_grams = \(record.carbsGrams?.description ?? "nil")")
+        print("📊 DAILY_CONTEXT SYNC:   weight_kg = \(record.weightKg?.description ?? "nil")")
+        print("📊 DAILY_CONTEXT SYNC:   body_fat_percentage = \(record.bodyFatPercentage?.description ?? "nil")")
+        print("📊 DAILY_CONTEXT SYNC:   stress_level = \(record.stressLevel ?? "nil")")
+        print("📊 DAILY_CONTEXT SYNC:   energy_level = \(record.energyLevel ?? "nil")")
+        print("📊 DAILY_CONTEXT SYNC:   readiness_score = \(record.readinessScore?.description ?? "nil")")
+        print("📊 DAILY_CONTEXT SYNC:   hrv_score = \(record.hrvScore?.description ?? "nil")")
+        print("📊 DAILY_CONTEXT SYNC:   created_at = \(record.createdAt)")
+        print("📊 DAILY_CONTEXT SYNC: ──────────────────────────────────────")
 
         do {
-            print("☁️ SyncService: [DAILY_CONTEXTS] 🚀 Sending upsert request...")
+            print("📊 DAILY_CONTEXT SYNC: Sending upsert to Supabase table \"daily_contexts\"...")
 
             try await supabase
                 .from("daily_contexts")
                 .upsert(record, onConflict: "id")
                 .execute()
 
-            print("☁️ SyncService: [DAILY_CONTEXTS] ✅ Synced: \(context.id)")
-            print("☁️ SyncService: ══════════════════════════════════════════════════")
+            print("📊 DAILY_CONTEXT SYNC SUCCESS")
+            print("📊 DAILY_CONTEXT SYNC: Row should now appear in Supabase daily_contexts table")
+            print("📊 DAILY_CONTEXT SYNC ══════════════════════════════════════════════════")
 
         } catch {
-            print("☁️ SyncService: [DAILY_CONTEXTS] ❌ Sync failed")
-            print("☁️ SyncService: [DAILY_CONTEXTS] Error: \(error)")
-            print("☁️ SyncService: [DAILY_CONTEXTS] Localized: \(error.localizedDescription)")
-            print("☁️ SyncService: ══════════════════════════════════════════════════")
+            print("📊 DAILY_CONTEXT SYNC ERROR: \(error)")
+            print("📊 DAILY_CONTEXT SYNC ERROR TYPE: \(type(of: error))")
+            print("📊 DAILY_CONTEXT SYNC ERROR LOCALIZED: \(error.localizedDescription)")
+            // Print full error details
+            let errorString = String(describing: error)
+            print("📊 DAILY_CONTEXT SYNC ERROR FULL: \(errorString)")
+            print("📊 DAILY_CONTEXT SYNC ══════════════════════════════════════════════════")
         }
     }
 
@@ -581,28 +596,58 @@ final class SupabaseSyncService: ObservableObject {
 
     /// Sync a single check-in
     func syncCheckIn(_ checkIn: CheckIn) async {
+        print("📋 CHECK_IN SYNC ══════════════════════════════════════════════════")
+        print("📋 CHECK_IN SYNC: Check-in ID: \(checkIn.id)")
+        print("📋 CHECK_IN SYNC: Date: \(checkIn.date)")
+        print("📋 CHECK_IN SYNC: isAuthenticated = \(authService.isAuthenticated)")
+        print("📋 CHECK_IN SYNC: userId = \(authService.userId?.uuidString ?? "NIL")")
+
         guard authService.isAuthenticated,
               let userId = authService.userId else {
-            print("☁️ SyncService: [CHECK_INS] ⏸️ Not authenticated")
+            print("📋 CHECK_IN SYNC ERROR: Not authenticated - cannot sync")
             return
         }
 
-        guard SupabaseConfig.isConfigured else { return }
+        guard SupabaseConfig.isConfigured else {
+            print("📋 CHECK_IN SYNC ERROR: Supabase not configured")
+            return
+        }
 
-        print("☁️ SyncService: [CHECK_INS] 📤 Syncing: \(checkIn.id)")
+        let record = CheckInSyncRecord(from: checkIn, userId: userId)
+
+        // Log EXACT payload being sent
+        print("📋 CHECK_IN SYNC: ──────────────────────────────────────")
+        print("📋 CHECK_IN SYNC: TABLE NAME: \"check_ins\"")
+        print("📋 CHECK_IN SYNC: PAYLOAD:")
+        print("📋 CHECK_IN SYNC:   id = \(record.id)")
+        print("📋 CHECK_IN SYNC:   user_id = \(record.userId)")
+        print("📋 CHECK_IN SYNC:   date = \(record.date)")
+        print("📋 CHECK_IN SYNC:   mood = \(record.mood)")
+        print("📋 CHECK_IN SYNC:   energy_level = \(record.energyLevel)")
+        print("📋 CHECK_IN SYNC:   soreness = \(record.soreness)")
+        print("📋 CHECK_IN SYNC:   motivation = \(record.motivation)")
+        print("📋 CHECK_IN SYNC:   notes = \(record.notes ?? "nil")")
+        print("📋 CHECK_IN SYNC: ──────────────────────────────────────")
 
         do {
-            let record = CheckInSyncRecord(from: checkIn, userId: userId)
+            print("📋 CHECK_IN SYNC: Sending upsert to Supabase table \"check_ins\"...")
 
             try await supabase
                 .from("check_ins")
                 .upsert(record, onConflict: "id")
                 .execute()
 
-            print("☁️ SyncService: [CHECK_INS] ✅ Synced: \(checkIn.id)")
+            print("📋 CHECK_IN SYNC SUCCESS")
+            print("📋 CHECK_IN SYNC: Row should now appear in Supabase check_ins table")
+            print("📋 CHECK_IN SYNC ══════════════════════════════════════════════════")
 
         } catch {
-            print("☁️ SyncService: [CHECK_INS] ❌ Sync failed: \(error.localizedDescription)")
+            print("📋 CHECK_IN SYNC ERROR: \(error)")
+            print("📋 CHECK_IN SYNC ERROR TYPE: \(type(of: error))")
+            print("📋 CHECK_IN SYNC ERROR LOCALIZED: \(error.localizedDescription)")
+            let errorString = String(describing: error)
+            print("📋 CHECK_IN SYNC ERROR FULL: \(errorString)")
+            print("📋 CHECK_IN SYNC ══════════════════════════════════════════════════")
         }
     }
 
@@ -612,26 +657,23 @@ final class SupabaseSyncService: ObservableObject {
 
     /// Sync a post-workout check-in
     func syncPostWorkoutCheckIn(workoutId: UUID, feeling: String, note: String?) async {
-        print("☁️ SyncService: ══════════════════════════════════════════════════")
-        print("☁️ SyncService: SYNC POST-WORKOUT CHECK-IN")
-        print("☁️ SyncService: ══════════════════════════════════════════════════")
-        print("☁️ SyncService: Workout ID: \(workoutId)")
-        print("☁️ SyncService: Feeling: \(feeling)")
-        print("☁️ SyncService: Note: \(note ?? "nil")")
-        print("☁️ SyncService: Auth State: isAuthenticated=\(authService.isAuthenticated)")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC ══════════════════════════════════════════════════")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC: Workout ID: \(workoutId)")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC: Feeling: \(feeling)")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC: Note: \(note ?? "nil")")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC: isAuthenticated = \(authService.isAuthenticated)")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC: userId = \(authService.userId?.uuidString ?? "NIL")")
 
         guard authService.isAuthenticated,
               let userId = authService.userId else {
-            print("☁️ SyncService: [POST_WORKOUT_CHECK_INS] ⏸️ Not authenticated")
+            print("💪 POST_WORKOUT_CHECK_IN SYNC ERROR: Not authenticated - cannot sync")
             return
         }
 
         guard SupabaseConfig.isConfigured else {
-            print("☁️ SyncService: [POST_WORKOUT_CHECK_INS] ⏸️ Supabase not configured")
+            print("💪 POST_WORKOUT_CHECK_IN SYNC ERROR: Supabase not configured")
             return
         }
-
-        print("☁️ SyncService: [POST_WORKOUT_CHECK_INS] User ID: \(userId)")
 
         let record = PostWorkoutCheckInSyncRecord(
             id: UUID(),
@@ -641,24 +683,38 @@ final class SupabaseSyncService: ObservableObject {
             note: note
         )
 
-        record.debugPrintJSON()
+        // Log EXACT payload being sent
+        print("💪 POST_WORKOUT_CHECK_IN SYNC: ──────────────────────────────────────")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC: TABLE NAME: \"post_workout_check_ins\"")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC: PAYLOAD:")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC:   id = \(record.id)")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC:   workout_id = \(record.workoutId)")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC:   user_id = \(record.userId)")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC:   feeling = \(record.feeling)")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC:   note = \(record.note ?? "nil")")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC:   date = \(record.date)")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC:   created_at = \(record.createdAt)")
+        print("💪 POST_WORKOUT_CHECK_IN SYNC: ──────────────────────────────────────")
 
         do {
-            print("☁️ SyncService: [POST_WORKOUT_CHECK_INS] 🚀 Sending insert request...")
+            print("💪 POST_WORKOUT_CHECK_IN SYNC: Sending insert to Supabase table \"post_workout_check_ins\"...")
 
             try await supabase
                 .from("post_workout_check_ins")
                 .insert(record)
                 .execute()
 
-            print("☁️ SyncService: [POST_WORKOUT_CHECK_INS] ✅ Synced!")
-            print("☁️ SyncService: ══════════════════════════════════════════════════")
+            print("💪 POST_WORKOUT_CHECK_IN SYNC SUCCESS")
+            print("💪 POST_WORKOUT_CHECK_IN SYNC: Row should now appear in Supabase post_workout_check_ins table")
+            print("💪 POST_WORKOUT_CHECK_IN SYNC ══════════════════════════════════════════════════")
 
         } catch {
-            print("☁️ SyncService: [POST_WORKOUT_CHECK_INS] ❌ Sync failed")
-            print("☁️ SyncService: [POST_WORKOUT_CHECK_INS] Error: \(error)")
-            print("☁️ SyncService: [POST_WORKOUT_CHECK_INS] Localized: \(error.localizedDescription)")
-            print("☁️ SyncService: ══════════════════════════════════════════════════")
+            print("💪 POST_WORKOUT_CHECK_IN SYNC ERROR: \(error)")
+            print("💪 POST_WORKOUT_CHECK_IN SYNC ERROR TYPE: \(type(of: error))")
+            print("💪 POST_WORKOUT_CHECK_IN SYNC ERROR LOCALIZED: \(error.localizedDescription)")
+            let errorString = String(describing: error)
+            print("💪 POST_WORKOUT_CHECK_IN SYNC ERROR FULL: \(errorString)")
+            print("💪 POST_WORKOUT_CHECK_IN SYNC ══════════════════════════════════════════════════")
         }
     }
 
@@ -932,6 +988,7 @@ struct SyncVerificationResult {
 // ══════════════════════════════════════════════════════════════════════
 
 /// Workout record for Supabase
+/// NOTE: updated_at is handled by Supabase trigger - we don't send it
 struct WorkoutSyncRecord: Codable {
     let id: UUID
     let userId: UUID
@@ -951,7 +1008,9 @@ struct WorkoutSyncRecord: Codable {
     let whatItMeans: String?
     let whatToDoNext: String?
     let createdAt: Date
-    let updatedAt: Date
+    // NOTE: updatedAt removed from upload - Supabase handles this via trigger
+    // We still decode it when pulling from cloud
+    var updatedAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -975,6 +1034,30 @@ struct WorkoutSyncRecord: Codable {
         case updatedAt = "updated_at"
     }
 
+    // Custom encode to EXCLUDE updated_at (Supabase handles it)
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(userId, forKey: .userId)
+        try container.encode(type, forKey: .type)
+        try container.encode(startDate, forKey: .startDate)
+        try container.encode(endDate, forKey: .endDate)
+        try container.encode(duration, forKey: .duration)
+        try container.encode(calories, forKey: .calories)
+        try container.encodeIfPresent(averageHeartRate, forKey: .averageHeartRate)
+        try container.encodeIfPresent(maxHeartRate, forKey: .maxHeartRate)
+        try container.encode(intensity, forKey: .intensity)
+        try container.encodeIfPresent(interpretation, forKey: .interpretation)
+        try container.encodeIfPresent(distance, forKey: .distance)
+        try container.encodeIfPresent(elevationGain, forKey: .elevationGain)
+        try container.encodeIfPresent(perceivedEffort, forKey: .perceivedEffort)
+        try container.encodeIfPresent(whatHappened, forKey: .whatHappened)
+        try container.encodeIfPresent(whatItMeans, forKey: .whatItMeans)
+        try container.encodeIfPresent(whatToDoNext, forKey: .whatToDoNext)
+        try container.encode(createdAt, forKey: .createdAt)
+        // NOTE: updated_at is NOT encoded - Supabase trigger handles it
+    }
+
     init(from workout: Workout, userId: UUID) {
         self.id = workout.id
         self.userId = userId
@@ -994,7 +1077,7 @@ struct WorkoutSyncRecord: Codable {
         self.whatItMeans = workout.whatItMeans
         self.whatToDoNext = workout.whatToDoNext
         self.createdAt = workout.startDate
-        self.updatedAt = Date()
+        self.updatedAt = nil // Not sent to Supabase
     }
 
     /// Debug helper to print JSON representation
@@ -1041,20 +1124,34 @@ struct WorkoutSyncRecord: Codable {
     }
 }
 
-/// Daily context record for Supabase
+/// Daily context record for Supabase (Extended with nutrition/weight)
+/// NOTE: updated_at is handled by Supabase trigger - we don't send it
 struct DailyContextSyncRecord: Codable {
     let id: UUID
     let userId: UUID
     let date: Date
-    let sleepHours: Double
-    let sleepQuality: String
-    let stressLevel: String
-    let energyLevel: String
+    // Sleep
+    let sleepHours: Double?
+    let sleepQuality: String?
+    // Energy/Stress
+    let stressLevel: String?
+    let energyLevel: String?
+    // Biometrics
     let restingHeartRate: Int?
     let hrvScore: Double?
-    let readinessScore: Int
+    let readinessScore: Int?
+    // Nutrition (new)
+    let waterMl: Int?
+    let calories: Int?
+    let proteinGrams: Int?
+    let carbsGrams: Int?
+    let fatGrams: Int?
+    let sodiumMg: Int?
+    // Weight (new)
+    let weightKg: Double?
+    let bodyFatPercentage: Double?
+    // Timestamps
     let createdAt: Date
-    let updatedAt: Date
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -1067,8 +1164,15 @@ struct DailyContextSyncRecord: Codable {
         case restingHeartRate = "resting_heart_rate"
         case hrvScore = "hrv_score"
         case readinessScore = "readiness_score"
+        case waterMl = "water_ml"
+        case calories
+        case proteinGrams = "protein_grams"
+        case carbsGrams = "carbs_grams"
+        case fatGrams = "fat_grams"
+        case sodiumMg = "sodium_mg"
+        case weightKg = "weight_kg"
+        case bodyFatPercentage = "body_fat_percentage"
         case createdAt = "created_at"
-        case updatedAt = "updated_at"
     }
 
     init(from context: DailyContext, userId: UUID) {
@@ -1082,22 +1186,37 @@ struct DailyContextSyncRecord: Codable {
         self.restingHeartRate = context.restingHeartRate
         self.hrvScore = context.hrvScore
         self.readinessScore = context.readinessScore
+        self.waterMl = context.waterIntakeMl
+        self.calories = context.calories
+        self.proteinGrams = context.proteinGrams
+        self.carbsGrams = context.carbsGrams
+        self.fatGrams = context.fatGrams
+        self.sodiumMg = nil // Not in model yet
+        self.weightKg = context.weightKg
+        self.bodyFatPercentage = context.bodyFatPercentage
         self.createdAt = context.date
-        self.updatedAt = Date()
     }
 
     func toDailyContext() -> DailyContext {
-        DailyContext(
+        var context = DailyContext(
             id: id,
             date: date,
-            sleepHours: sleepHours,
-            sleepQuality: SleepQuality(rawValue: sleepQuality) ?? .fair,
-            stressLevel: StressLevel(rawValue: stressLevel) ?? .moderate,
-            energyLevel: EnergyLevel(rawValue: energyLevel) ?? .moderate,
+            sleepHours: sleepHours ?? 0,
+            sleepQuality: SleepQuality(rawValue: sleepQuality ?? "Fair") ?? .fair,
+            stressLevel: StressLevel(rawValue: stressLevel ?? "Moderate") ?? .moderate,
+            energyLevel: EnergyLevel(rawValue: energyLevel ?? "Moderate") ?? .moderate,
             restingHeartRate: restingHeartRate,
             hrvScore: hrvScore,
-            readinessScore: readinessScore
+            readinessScore: readinessScore ?? 50
         )
+        context.waterIntakeMl = waterMl
+        context.calories = calories
+        context.proteinGrams = proteinGrams
+        context.carbsGrams = carbsGrams
+        context.fatGrams = fatGrams
+        context.weightKg = weightKg
+        context.bodyFatPercentage = bodyFatPercentage
+        return context
     }
 }
 
@@ -1154,12 +1273,14 @@ struct CheckInSyncRecord: Codable {
 }
 
 /// Post-workout check-in record for Supabase
+/// Schema requires: id, user_id, workout_id, feeling, note, date, created_at
 struct PostWorkoutCheckInSyncRecord: Codable {
     let id: UUID
     let workoutId: UUID
     let userId: UUID
     let feeling: String
     let note: String?
+    let date: Date  // FIXED: Added missing date field required by schema
     let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -1168,6 +1289,7 @@ struct PostWorkoutCheckInSyncRecord: Codable {
         case userId = "user_id"
         case feeling
         case note
+        case date
         case createdAt = "created_at"
     }
 
@@ -1177,6 +1299,7 @@ struct PostWorkoutCheckInSyncRecord: Codable {
         self.userId = userId
         self.feeling = feeling
         self.note = note
+        self.date = Date()  // FIXED: Set date to current timestamp
         self.createdAt = Date()
     }
 

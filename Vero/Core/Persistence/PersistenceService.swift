@@ -309,20 +309,31 @@ final class PersistenceService: ObservableObject {
     /// Save or update daily context
     @discardableResult
     func saveDailyContext(_ context: DailyContext) -> PersistedDailyContext {
+        print("📊 PersistenceService: ══════════════════════════════════════════════════")
+        print("📊 PersistenceService: SAVING DAILY CONTEXT")
+        print("📊 PersistenceService: Date: \(context.date)")
+        print("📊 PersistenceService: Water: \(context.waterIntakeMl ?? 0)ml")
+        print("📊 PersistenceService: Calories: \(context.calories ?? 0)")
+        print("📊 PersistenceService: Weight: \(context.weightKg ?? 0)kg")
+
         // Check if context for today already exists
         if let existing = fetchTodayContext() {
+            print("📊 PersistenceService: Found existing context, updating...")
             updatePersistedContext(existing, from: context)
             return existing
         }
 
+        print("📊 PersistenceService: Creating new context...")
         let persisted = PersistedDailyContext(from: context)
         self.context.insert(persisted)
 
         do {
             try self.context.save()
-            print("PersistenceService: Saved daily context for \(context.date)")
+            print("📊 PersistenceService: ✅ Saved daily context for \(context.date)")
+            print("📊 PersistenceService: ══════════════════════════════════════════════════")
         } catch {
-            print("PersistenceService: Error saving daily context: \(error)")
+            print("📊 PersistenceService: ❌ Error saving daily context: \(error)")
+            print("📊 PersistenceService: ══════════════════════════════════════════════════")
         }
 
         return persisted
@@ -337,12 +348,22 @@ final class PersistenceService: ObservableObject {
         persisted.restingHeartRate = ctx.restingHeartRate
         persisted.hrvScore = ctx.hrvScore
         persisted.readinessScore = ctx.readinessScore
+        // Nutrition fields
+        persisted.waterIntakeMl = ctx.waterIntakeMl
+        persisted.calories = ctx.calories
+        persisted.proteinGrams = ctx.proteinGrams
+        persisted.carbsGrams = ctx.carbsGrams
+        persisted.fatGrams = ctx.fatGrams
+        // Weight fields
+        persisted.weightKg = ctx.weightKg
+        persisted.bodyFatPercentage = ctx.bodyFatPercentage
         persisted.updatedAt = Date()
 
         do {
             try context.save()
+            print("📊 PersistenceService: ✅ Updated daily context - water=\(ctx.waterIntakeMl ?? 0)ml, weight=\(ctx.weightKg ?? 0)kg")
         } catch {
-            print("PersistenceService: Error updating daily context: \(error)")
+            print("📊 PersistenceService: ❌ Error updating daily context: \(error)")
         }
     }
 
@@ -402,6 +423,23 @@ final class PersistenceService: ObservableObject {
             return results.first?.toDailyContext()
         } catch {
             print("PersistenceService: Error fetching daily context for date: \(error)")
+            return nil
+        }
+    }
+
+    /// Fetch the last recorded weight (from any daily context that has weight data)
+    func fetchLastRecordedWeight() -> Double? {
+        var descriptor = FetchDescriptor<PersistedDailyContext>(
+            predicate: #Predicate { $0.weightKg != nil && $0.weightKg! > 0 },
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
+
+        do {
+            let results = try context.fetch(descriptor)
+            return results.first?.weightKg
+        } catch {
+            print("PersistenceService: Error fetching last weight: \(error)")
             return nil
         }
     }
@@ -748,6 +786,49 @@ final class PersistenceService: ObservableObject {
     /// Check if user has checked in for a workout
     func hasCheckedIn(for workoutId: UUID) -> Bool {
         return fetchPostWorkoutCheckIn(for: workoutId) != nil
+    }
+
+    /// Calculate weekly weight delta (current - week ago)
+    func calculateWeeklyWeightDelta() -> Double? {
+        let calendar = Calendar.current
+        let now = Date()
+
+        // Get today's weight
+        guard let todayContext = fetchTodayDailyContext(),
+              let currentWeight = todayContext.weightKg,
+              currentWeight > 0 else {
+            return nil
+        }
+
+        // Get weight from ~7 days ago
+        guard let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) else {
+            return nil
+        }
+
+        // Find daily context from around a week ago (within 2 days tolerance)
+        var descriptor = FetchDescriptor<PersistedDailyContext>(
+            predicate: #Predicate<PersistedDailyContext> { context in
+                context.weightKg != nil && context.weightKg! > 0
+            },
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        descriptor.fetchLimit = 14 // Look at last 2 weeks of entries
+
+        do {
+            let contexts = try container.mainContext.fetch(descriptor)
+
+            // Find entry closest to a week ago
+            for context in contexts {
+                let daysDiff = abs(calendar.dateComponents([.day], from: weekAgo, to: context.date).day ?? 0)
+                if daysDiff <= 2 && context.weightKg != nil && context.weightKg! > 0 {
+                    return currentWeight - context.weightKg!
+                }
+            }
+            return nil
+        } catch {
+            print("PersistenceService: Error calculating weekly weight delta: \(error)")
+            return nil
+        }
     }
 
     // MARK: - Stored Interpretation Access

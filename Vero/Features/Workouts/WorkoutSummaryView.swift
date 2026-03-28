@@ -245,7 +245,10 @@ struct MetricsGridSection: View {
             result.append(("Recovery HR", "\(recovery)", "bpm", "arrow.down.heart.fill", AppColors.olive))
         }
 
-        result.append(("Active Energy", "\(workout.calories)", "cal", "flame.fill", AppColors.orange))
+        // Only show calories if from real data (HealthKit)
+        if workout.calories > 0 {
+            result.append(("Active Energy", "\(workout.calories)", "cal", "flame.fill", AppColors.orange))
+        }
 
         if let distance = workout.distanceFormatted {
             result.append(("Distance", distance, nil, "figure.walk.motion", AppColors.info))

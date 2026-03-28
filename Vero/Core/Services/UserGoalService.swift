@@ -37,6 +37,11 @@ final class UserGoalService: ObservableObject {
         primaryGoal == .weightLoss
     }
 
+    /// Whether to emphasize nutrition tracking (weight loss or performance goals)
+    var shouldEmphasizeNutrition: Bool {
+        primaryGoal == .weightLoss || primaryGoal == .performance
+    }
+
     /// Whether user has completed goal selection
     var hasSelectedGoal: Bool {
         primaryGoal != nil
@@ -85,29 +90,56 @@ final class UserGoalService: ObservableObject {
     // MARK: - Persistence
 
     private func saveGoals() {
+        print("🎯 UserGoalService: ══════════════════════════════════════════════════")
+        print("🎯 UserGoalService: SAVING GOALS")
+
         if let primary = primaryGoal {
             userDefaults.set(primary.rawValue, forKey: primaryGoalKey)
+            print("🎯 UserGoalService: ✅ Saved primary goal: \(primary.rawValue)")
         } else {
             userDefaults.removeObject(forKey: primaryGoalKey)
+            print("🎯 UserGoalService: ⚠️ No primary goal to save")
         }
 
         let goalsArray = selectedGoals.map { $0.rawValue }
         userDefaults.set(goalsArray, forKey: selectedGoalsKey)
+        print("🎯 UserGoalService: ✅ Saved \(goalsArray.count) selected goals: \(goalsArray)")
+
+        // Force synchronize to ensure immediate persistence
+        userDefaults.synchronize()
+        print("🎯 UserGoalService: ✅ UserDefaults synchronized")
+        print("🎯 UserGoalService: ══════════════════════════════════════════════════")
     }
 
     private func loadSavedGoals() {
+        print("🎯 UserGoalService: ══════════════════════════════════════════════════")
+        print("🎯 UserGoalService: LOADING GOALS")
+
         // Load primary goal
-        if let rawValue = userDefaults.string(forKey: primaryGoalKey),
+        let rawPrimary = userDefaults.string(forKey: primaryGoalKey)
+        print("🎯 UserGoalService: Raw primary from UserDefaults: \(rawPrimary ?? "nil")")
+
+        if let rawValue = rawPrimary,
            let goal = UserGoal(rawValue: rawValue) {
             primaryGoal = goal
+            print("🎯 UserGoalService: ✅ Loaded primary goal: \(goal.rawValue)")
+        } else {
+            print("🎯 UserGoalService: ⚠️ No primary goal found in UserDefaults")
         }
 
         // Load selected goals
-        if let rawValues = userDefaults.array(forKey: selectedGoalsKey) as? [String] {
+        let rawGoals = userDefaults.array(forKey: selectedGoalsKey) as? [String]
+        print("🎯 UserGoalService: Raw selected from UserDefaults: \(rawGoals ?? [])")
+
+        if let rawValues = rawGoals {
             selectedGoals = Set(rawValues.compactMap { UserGoal(rawValue: $0) })
+            print("🎯 UserGoalService: ✅ Loaded \(selectedGoals.count) selected goals")
+        } else {
+            print("🎯 UserGoalService: ⚠️ No selected goals found in UserDefaults")
         }
 
-        print("🎯 UserGoalService: Loaded goals - primary = \(primaryGoal?.rawValue ?? "none")")
+        print("🎯 UserGoalService: RESULT: primary = \(primaryGoal?.rawValue ?? "none"), shouldShowWeightUI = \(shouldShowWeightUI)")
+        print("🎯 UserGoalService: ══════════════════════════════════════════════════")
     }
 }
 

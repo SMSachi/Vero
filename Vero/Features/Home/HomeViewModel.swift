@@ -81,6 +81,11 @@ final class HomeViewModel: ObservableObject {
         persistenceService.calculateCurrentStreak()
     }
 
+    /// Weekly weight change (for weight loss tracking)
+    var weeklyWeightDelta: Double? {
+        persistenceService.calculateWeeklyWeightDelta()
+    }
+
     /// Whether a post-workout check-in has been completed for the latest workout
     var hasCompletedCheckIn: Bool {
         guard let workout = latestWorkout else { return false }
@@ -93,12 +98,25 @@ final class HomeViewModel: ObservableObject {
     private let persistenceService = PersistenceService.shared
     private let syncService = SupabaseSyncService.shared
 
+    // MARK: - Subscriptions
+
+    private var cancellables = Set<AnyCancellable>()
+
     // MARK: - Initialization
 
     init() {
         // CRITICAL: Don't do ANY work in init - it blocks the main thread
         // and prevents SwiftUI views from appearing (onAppear never fires)
-        print("🏠 HomeViewModel: init() - NO WORK (deferred to loadData)")
+        print("🏠 HomeViewModel: init() - subscribing to DataBroadcaster")
+
+        // Subscribe to home-relevant data changes
+        DataBroadcaster.shared.homeDataChanged
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                print("🏠 HomeViewModel: RECEIVED broadcast - \(event.type.rawValue)")
+                self?.refreshAnalytics()
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Cached Data Loading
@@ -136,6 +154,10 @@ final class HomeViewModel: ObservableObject {
         print("🏠 HomeViewModel: Fetching daily context...")
         if let cachedContext = persistenceService.fetchTodayDailyContext() {
             self.dailyContext = cachedContext
+            // Also update water intake from daily context
+            if let waterMl = cachedContext.waterIntakeMl, waterMl > 0 {
+                self.waterIntake = Double(waterMl) / 1000.0
+            }
         }
 
         // Load cached recovery

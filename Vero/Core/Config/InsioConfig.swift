@@ -61,7 +61,8 @@ enum InsioConfig {
         /// Product identifier for Plus monthly subscription
         static let plusMonthlyProductID = "insio_plus_monthly"
 
-        /// Product identifier for Plus yearly subscription
+        /// Product identifier for Plus yearly subscription (NOT used at launch)
+        /// Kept for future use
         static let plusYearlyProductID = "insio_plus_yearly"
 
         // MARK: Pro Tier ($12.99/month)
@@ -69,7 +70,8 @@ enum InsioConfig {
         /// Product identifier for Pro monthly subscription
         static let proMonthlyProductID = "insio_pro_monthly"
 
-        /// Product identifier for Pro yearly subscription
+        /// Product identifier for Pro yearly subscription (NOT used at launch)
+        /// Kept for future use
         static let proYearlyProductID = "insio_pro_yearly"
 
         // MARK: Pricing (for display, actual prices come from App Store)
@@ -80,22 +82,26 @@ enum InsioConfig {
         /// Pro monthly price (display only - App Store is source of truth)
         static let proMonthlyPrice: Decimal = 12.99
 
-        // MARK: Product Sets
+        // MARK: Product Sets (LAUNCH: Monthly only)
 
-        /// All Plus subscription product identifiers
+        /// All Plus subscription product identifiers (monthly only at launch)
         static let plusProductIDs: Set<String> = [
-            plusMonthlyProductID,
-            plusYearlyProductID
+            plusMonthlyProductID
+            // plusYearlyProductID  // Commented out - not available at launch
         ]
 
-        /// All Pro subscription product identifiers
+        /// All Pro subscription product identifiers (monthly only at launch)
         static let proProductIDs: Set<String> = [
-            proMonthlyProductID,
-            proYearlyProductID
+            proMonthlyProductID
+            // proYearlyProductID  // Commented out - not available at launch
         ]
 
-        /// All subscription product identifiers
-        static let allProductIDs: Set<String> = plusProductIDs.union(proProductIDs)
+        /// All subscription product identifiers to request from App Store
+        /// LAUNCH: Monthly subscriptions only
+        static let allProductIDs: Set<String> = [
+            plusMonthlyProductID,
+            proMonthlyProductID
+        ]
 
         /// Free trial duration in days
         static let freeTrialDays = 3

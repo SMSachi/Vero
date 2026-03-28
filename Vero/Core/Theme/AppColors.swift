@@ -2,32 +2,47 @@
 //  AppColors.swift
 //  Insio Health
 //
-//  Premium, warm, emotionally engaging color palette
+//  STRICT COLOR SYSTEM:
+//  - NAVY = primary (headers, selected states, nav bar)
+//  - OLIVE = secondary (cards, subtle highlights)
+//  - BURNT ORANGE = accent (buttons, CTAs, progress, selected)
+//  - OFF-WHITE = background
 //
 
 import SwiftUI
 
 struct AppColors {
-    // MARK: - Brand Colors
+    // MARK: - Core Brand Colors (STRICT SYSTEM)
 
-    /// Deep navy - primary brand color, trust and intelligence
+    /// NAVY - Primary: headers, selected states, nav bar
     static let navy = Color(red: 0.11, green: 0.16, blue: 0.25)
 
-    /// Olive green - wellness, recovery, body-context
+    /// OLIVE - Secondary: cards, subtle highlights
     static let olive = Color(red: 0.42, green: 0.50, blue: 0.38)
 
-    /// Vivid orange - energy, action, intensity (use sparingly)
-    static let orange = Color(red: 0.96, green: 0.52, blue: 0.28)
+    /// BURNT ORANGE - Accent: buttons, CTAs, progress indicators
+    static let burntOrange = Color(red: 0.80, green: 0.40, blue: 0.20)
 
-    /// Soft coral - warmth, friendliness
+    /// OFF-WHITE - Background
+    static let offWhite = Color(red: 0.975, green: 0.965, blue: 0.945)
+
+    // MARK: - Convenience Aliases
+
+    /// Primary accent for CTAs and buttons
+    static let accent = burntOrange
+
+    /// Legacy orange alias (use burntOrange for new code)
+    static let orange = burntOrange
+
+    /// Soft coral - warmth, friendliness (secondary accent)
     static let coral = Color(red: 0.95, green: 0.62, blue: 0.52)
 
     // MARK: - Backgrounds
 
-    /// Warm cream background - soft, editorial feel
-    static let background = Color(red: 0.975, green: 0.965, blue: 0.945)
+    /// Main background - off-white (NOT pure white)
+    static let background = offWhite
 
-    /// Card background - clean white with warmth
+    /// Card background - clean white for contrast against off-white
     static let cardBackground = Color.white
 
     /// Hero card background - subtle warm tint
@@ -41,10 +56,21 @@ struct AppColors {
 
     // MARK: - Tinted Backgrounds (for cards with personality)
 
-    static let navyTint = Color(red: 0.11, green: 0.16, blue: 0.25).opacity(0.06)
-    static let oliveTint = Color(red: 0.42, green: 0.50, blue: 0.38).opacity(0.08)
-    static let orangeTint = Color(red: 0.96, green: 0.52, blue: 0.28).opacity(0.06)
+    static let navyTint = navy.opacity(0.06)
+    static let oliveTint = olive.opacity(0.08)
+    static let accentTint = burntOrange.opacity(0.08)
+    static let orangeTint = accentTint  // Legacy alias
     static let warmTint = Color(red: 0.98, green: 0.95, blue: 0.92)
+
+    // MARK: - Section Colors (for Daily Context UI)
+
+    /// Water section - blue/teal derived from navy
+    static let waterTint = Color(red: 0.20, green: 0.45, blue: 0.65).opacity(0.12)
+    static let waterAccent = Color(red: 0.20, green: 0.45, blue: 0.65)
+
+    /// Nutrition section - olive tinted
+    static let nutritionTint = oliveTint
+    static let nutritionAccent = olive
 
     // MARK: - Text Colors
 
@@ -84,39 +110,52 @@ struct AppColors {
     static let intensityHigh = Color(red: 0.90, green: 0.58, blue: 0.38)
     static let intensityMax = Color(red: 0.88, green: 0.42, blue: 0.35)
 
-    // MARK: - Interactive States
+    // MARK: - Interactive States (STRICT SYSTEM)
 
-    static let buttonPrimaryBackground = navy
+    /// Primary button = BURNT ORANGE filled
+    static let buttonPrimaryBackground = burntOrange
     static let buttonPrimaryForeground = Color.white
+
+    /// Secondary button = NAVY outline
     static let buttonSecondaryBackground = Color.white
     static let buttonSecondaryForeground = navy
-    static let buttonSecondaryBorder = Color(red: 0.88, green: 0.86, blue: 0.84)
+    static let buttonSecondaryBorder = navy
+
+    /// Selected states = BURNT ORANGE or NAVY (never gray)
+    static let selectedBackground = burntOrange.opacity(0.12)
+    static let selectedBorder = burntOrange
 
     // MARK: - Gradient Presets
 
+    /// Hero header gradient: NAVY → subtle OLIVE
     static let heroGradient = LinearGradient(
-        colors: [
-            Color(red: 0.11, green: 0.16, blue: 0.25),
-            Color(red: 0.18, green: 0.22, blue: 0.32)
-        ],
+        colors: [navy, Color(red: 0.18, green: 0.24, blue: 0.30)],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    /// Header gradient: NAVY → OLIVE (for top sections)
+    static let headerGradient = LinearGradient(
+        colors: [navy, olive.opacity(0.9)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
     static let warmGradient = LinearGradient(
-        colors: [
-            Color(red: 0.98, green: 0.96, blue: 0.94),
-            Color(red: 0.96, green: 0.94, blue: 0.91)
-        ],
+        colors: [offWhite, Color(red: 0.96, green: 0.94, blue: 0.91)],
         startPoint: .top,
         endPoint: .bottom
     )
 
     static let oliveGradient = LinearGradient(
-        colors: [
-            Color(red: 0.42, green: 0.50, blue: 0.38),
-            Color(red: 0.48, green: 0.55, blue: 0.42)
-        ],
+        colors: [olive, Color(red: 0.48, green: 0.55, blue: 0.42)],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    /// Accent gradient for CTAs
+    static let accentGradient = LinearGradient(
+        colors: [burntOrange, Color(red: 0.85, green: 0.45, blue: 0.25)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )

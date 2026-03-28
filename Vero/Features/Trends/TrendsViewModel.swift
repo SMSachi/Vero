@@ -5,9 +5,15 @@
 //  ViewModel for the Trends screen that manages trend analysis
 //  and provides data to the view.
 //
+//  DATA FLOW:
+//  - Subscribes to DataBroadcaster for automatic updates
+//  - When any metric is logged, Trends refreshes automatically
+//  - Uses same PersistenceService as Home for consistency
+//
 
 import Foundation
 import SwiftUI
+import Combine
 
 @MainActor
 final class TrendsViewModel: ObservableObject {
@@ -31,6 +37,27 @@ final class TrendsViewModel: ObservableObject {
 
     /// Whether we have any real data
     @Published private(set) var hasRealData = false
+
+    // MARK: - Subscriptions
+
+    private var cancellables = Set<AnyCancellable>()
+
+    // MARK: - Initialization
+
+    init() {
+        print("📈 TrendsViewModel: init() - subscribing to DataBroadcaster")
+
+        // Subscribe to trends-relevant data changes
+        DataBroadcaster.shared.trendsDataChanged
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                print("📈 TrendsViewModel: RECEIVED broadcast - \(event.type.rawValue)")
+                Task { [weak self] in
+                    await self?.loadTrends()
+                }
+            }
+            .store(in: &cancellables)
+    }
 
     // MARK: - Computed Properties
 

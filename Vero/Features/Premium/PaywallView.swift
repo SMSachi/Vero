@@ -281,7 +281,8 @@ private struct TierCard: View {
                 }
             }
             .padding(AppSpacing.Layout.cardPadding)
-            .background(isSelected ? AppColors.navyTint : AppColors.cardBackground)
+            // STRICT: Selected = NAVY border + light OLIVE background
+            .background(isSelected ? AppColors.oliveTint : AppColors.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: AppSpacing.Layout.cardRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: AppSpacing.Layout.cardRadius, style: .continuous)
@@ -509,7 +510,8 @@ private struct SubscribeButton: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, AppSpacing.md)
-            .background(AppColors.navy)
+            // STRICT: CTA button = BURNT ORANGE
+            .background(AppColors.burntOrange)
             .foregroundStyle(.white)
             .clipShape(RoundedRectangle(cornerRadius: AppSpacing.radiusMedium, style: .continuous))
         }
@@ -521,6 +523,9 @@ private struct SubscribeButton: View {
 // MARK: - Legal Text
 
 private struct LegalText: View {
+    @State private var showTerms = false
+    @State private var showPrivacy = false
+
     var body: some View {
         VStack(spacing: AppSpacing.xs) {
             Text("Payment will be charged to your Apple ID account at confirmation of purchase. Subscription automatically renews unless it is canceled at least 24 hours before the end of the current period.")
@@ -529,17 +534,31 @@ private struct LegalText: View {
                 .multilineTextAlignment(.center)
 
             HStack(spacing: AppSpacing.md) {
-                Link("Terms of Service", destination: InsioConfig.Legal.termsOfServiceURL)
-                    .font(AppTypography.captionSmall)
-                    .foregroundStyle(AppColors.navy)
+                Button {
+                    showTerms = true
+                } label: {
+                    Text("Terms of Service")
+                        .font(AppTypography.captionSmall)
+                        .foregroundStyle(AppColors.navy)
+                }
 
-                Link("Privacy Policy", destination: InsioConfig.Legal.privacyPolicyURL)
-                    .font(AppTypography.captionSmall)
-                    .foregroundStyle(AppColors.navy)
+                Button {
+                    showPrivacy = true
+                } label: {
+                    Text("Privacy Policy")
+                        .font(AppTypography.captionSmall)
+                        .foregroundStyle(AppColors.navy)
+                }
             }
         }
         .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
         .padding(.top, AppSpacing.sm)
+        .sheet(isPresented: $showTerms) {
+            TermsOfServiceView()
+        }
+        .sheet(isPresented: $showPrivacy) {
+            PrivacyView()
+        }
     }
 }
 

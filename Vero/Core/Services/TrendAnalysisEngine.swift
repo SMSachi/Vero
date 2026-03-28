@@ -97,6 +97,29 @@ struct TrendAnalysisEngine {
             timeframe: timeframe
         ))
 
+        // 8. Weight trend analysis (only for weight_loss goal)
+        let goalService = UserGoalService.shared
+        if goalService.shouldShowWeightUI {
+            insights.append(contentsOf: analyzeWeightTrend(
+                contexts: contexts,
+                timeframe: timeframe
+            ))
+        }
+
+        // 9. Nutrition/hydration trend analysis (for weight_loss and performance)
+        if goalService.shouldEmphasizeNutrition {
+            insights.append(contentsOf: analyzeNutritionTrend(
+                contexts: contexts,
+                timeframe: timeframe
+            ))
+        }
+
+        // 10. Hydration trend (all goals)
+        insights.append(contentsOf: analyzeHydrationTrend(
+            contexts: contexts,
+            timeframe: timeframe
+        ))
+
         // Sort by priority and return
         let sortedInsights = insights.sorted { $0.priority.rawValue > $1.priority.rawValue }
 
@@ -171,12 +194,11 @@ struct TrendAnalysisEngine {
         to endDate: Date,
         service: PersistenceService
     ) -> [DailyContext] {
-        // Fetch contexts from persistence
-        // For now, we'll work with what's available
-        if let todayContext = service.fetchTodayDailyContext() {
-            return [todayContext]
+        // Fetch recent daily contexts and filter by date range
+        let allContexts = service.fetchRecentDailyContexts(limit: 60)
+        return allContexts.filter { context in
+            context.date >= startDate && context.date <= endDate
         }
-        return []
     }
 
     private static func fetchRecoveries(
@@ -673,6 +695,226 @@ struct TrendAnalysisEngine {
         return insights
     }
 
+    // MARK: - Analysis: Weight Trend (Weight Loss Goal Only)
+
+    private static func analyzeWeightTrend(
+        contexts: [DailyContext],
+        timeframe: Int
+    ) -> [GeneratedInsight] {
+        var insights: [GeneratedInsight] = []
+
+        // Get weight entries
+        let weightsWithDates = contexts.compactMap { context -> (date: Date, weight: Double)? in
+            guard let weight = context.weightKg else { return nil }
+            return (context.date, weight)
+        }.sorted { $0.date < $1.date }
+
+        guard weightsWithDates.count >= 2 else {
+            // Not enough data
+            if weightsWithDates.isEmpty {
+                insights.append(GeneratedInsight(
+                    type: .recommendation,
+                    title: "Start tracking weight",
+                    description: "Log your weight regularly to see trends toward your goal.",
+                    metric: .weight,
+                    changePercentage: 0,
+                    priority: .medium,
+                    icon: "scalemass.fill",
+                    color: "navy"
+                ))
+            }
+            return insights
+        }
+
+        // Calculate trend
+        let firstWeight = weightsWithDates.first!.weight
+        let lastWeight = weightsWithDates.last!.weight
+        let weightChange = lastWeight - firstWeight
+        let percentChange = (weightChange / firstWeight) * 100
+
+        if weightChange < -0.5 {
+            // Losing weight
+            let progressText = "Keep it up!"
+
+            insights.append(GeneratedInsight(
+                type: .improvement,
+                title: "Weight trending down",
+                description: String(format: "You've lost %.1f kg (%.1f%%). %@", abs(weightChange), abs(percentChange), progressText),
+                metric: .weight,
+                changePercentage: percentChange,
+                priority: .high,
+                icon: "arrow.down.circle.fill",
+                color: "olive"
+            ))
+        } else if weightChange > 0.5 {
+            // Gaining weight (not ideal for weight loss goal)
+            insights.append(GeneratedInsight(
+                type: .warning,
+                title: "Weight trending up",
+                description: String(format: "You've gained %.1f kg. Review nutrition and activity.", abs(weightChange)),
+                metric: .weight,
+                changePercentage: percentChange,
+                priority: .high,
+                icon: "arrow.up.circle.fill",
+                color: "coral"
+            ))
+        } else {
+            // Stable
+            insights.append(GeneratedInsight(
+                type: .pattern,
+                title: "Weight is stable",
+                description: String(format: "Holding steady at %.1f kg. Adjust intake for change.", lastWeight),
+                metric: .weight,
+                changePercentage: percentChange,
+                priority: .medium,
+                icon: "equal.circle.fill",
+                color: "navy"
+            ))
+        }
+
+        return insights
+    }
+
+    // MARK: - Analysis: Nutrition Trend
+
+    private static func analyzeNutritionTrend(
+        contexts: [DailyContext],
+        timeframe: Int
+    ) -> [GeneratedInsight] {
+        var insights: [GeneratedInsight] = []
+
+        // Analyze calories
+        let calorieEntries = contexts.compactMap { $0.calories }
+        if calorieEntries.count >= 3 {
+            let avgCalories = Double(calorieEntries.reduce(0, +)) / Double(calorieEntries.count)
+
+            if avgCalories < 1500 {
+                insights.append(GeneratedInsight(
+                    type: .warning,
+                    title: "Low calorie intake",
+                    description: String(format: "Averaging %.0f kcal/day. Ensure adequate nutrition.", avgCalories),
+                    metric: .nutrition,
+                    changePercentage: 0,
+                    priority: .high,
+                    icon: "fork.knife",
+                    color: "coral"
+                ))
+            } else if avgCalories > 2800 {
+                insights.append(GeneratedInsight(
+                    type: .pattern,
+                    title: "High calorie intake",
+                    description: String(format: "Averaging %.0f kcal/day. Good for muscle gain or high activity.", avgCalories),
+                    metric: .nutrition,
+                    changePercentage: 0,
+                    priority: .low,
+                    icon: "fork.knife",
+                    color: "navy"
+                ))
+            }
+        }
+
+        // Analyze protein
+        let proteinEntries = contexts.compactMap { $0.proteinGrams }
+        if proteinEntries.count >= 3 {
+            let avgProtein = Double(proteinEntries.reduce(0, +)) / Double(proteinEntries.count)
+            let goalService = UserGoalService.shared
+
+            if goalService.primaryGoal == .performance && avgProtein < 120 {
+                insights.append(GeneratedInsight(
+                    type: .recommendation,
+                    title: "Protein could be higher",
+                    description: String(format: "Averaging %.0fg protein. Aim for 1.6-2.2g per kg bodyweight for performance.", avgProtein),
+                    metric: .nutrition,
+                    changePercentage: 0,
+                    priority: .medium,
+                    icon: "bolt.fill",
+                    color: "navy"
+                ))
+            } else if avgProtein >= 120 {
+                insights.append(GeneratedInsight(
+                    type: .pattern,
+                    title: "Good protein intake",
+                    description: String(format: "Averaging %.0fg protein daily — supports recovery and muscle.", avgProtein),
+                    metric: .nutrition,
+                    changePercentage: 0,
+                    priority: .low,
+                    icon: "checkmark.circle.fill",
+                    color: "olive"
+                ))
+            }
+        }
+
+        return insights
+    }
+
+    // MARK: - Analysis: Hydration Trend
+
+    private static func analyzeHydrationTrend(
+        contexts: [DailyContext],
+        timeframe: Int
+    ) -> [GeneratedInsight] {
+        var insights: [GeneratedInsight] = []
+
+        // Get water intake entries
+        let waterEntries = contexts.compactMap { $0.waterIntakeMl }
+
+        guard waterEntries.count >= 3 else {
+            if waterEntries.isEmpty {
+                insights.append(GeneratedInsight(
+                    type: .recommendation,
+                    title: "Track your water intake",
+                    description: "Hydration affects performance and recovery. Start logging water.",
+                    metric: .hydration,
+                    changePercentage: 0,
+                    priority: .low,
+                    icon: "drop.fill",
+                    color: "blue"
+                ))
+            }
+            return insights
+        }
+
+        let avgWaterMl = Double(waterEntries.reduce(0, +)) / Double(waterEntries.count)
+        let avgWaterL = avgWaterMl / 1000.0
+
+        if avgWaterL < 1.5 {
+            insights.append(GeneratedInsight(
+                type: .warning,
+                title: "Hydration needs attention",
+                description: String(format: "Averaging %.1fL water/day. Aim for 2-3L for optimal performance.", avgWaterL),
+                metric: .hydration,
+                changePercentage: 0,
+                priority: .medium,
+                icon: "drop.fill",
+                color: "coral"
+            ))
+        } else if avgWaterL >= 2.5 {
+            insights.append(GeneratedInsight(
+                type: .pattern,
+                title: "Excellent hydration",
+                description: String(format: "Averaging %.1fL water/day — great for recovery.", avgWaterL),
+                metric: .hydration,
+                changePercentage: 0,
+                priority: .low,
+                icon: "drop.fill",
+                color: "olive"
+            ))
+        } else {
+            insights.append(GeneratedInsight(
+                type: .pattern,
+                title: "Good hydration",
+                description: String(format: "Averaging %.1fL water/day. On track.", avgWaterL),
+                metric: .hydration,
+                changePercentage: 0,
+                priority: .low,
+                icon: "drop.fill",
+                color: "blue"
+            ))
+        }
+
+        return insights
+    }
+
     // MARK: - Calendar Data Generation
 
     private static func generateCalendarData(
@@ -801,7 +1043,63 @@ struct TrendAnalysisEngine {
             ))
         }
 
+        // Weight Trend (only for weight_loss goal)
+        let goalService = UserGoalService.shared
+        if goalService.shouldShowWeightUI {
+            let weights = contexts.compactMap { $0.weightKg }.sorted()
+            if let lastWeight = weights.last {
+                let changeText: String
+                let isPositive: Bool
+                if weights.count >= 2 {
+                    let first = weights.first!
+                    let diff = lastWeight - first
+                    changeText = String(format: "%@%.1f kg", diff >= 0 ? "+" : "", diff)
+                    isPositive = diff < 0 // For weight loss, losing is positive
+                } else {
+                    changeText = "1 entry"
+                    isPositive = true
+                }
+
+                trends.append(MetricTrend(
+                    title: "Weight",
+                    currentValue: String(format: "%.1f kg", lastWeight),
+                    change: changeText,
+                    isPositive: isPositive,
+                    dataPoints: generateWeightTrendData(weights: weights),
+                    color: isPositive ? "olive" : "coral"
+                ))
+            }
+        }
+
+        // Hydration Trend
+        let waterEntries = contexts.compactMap { $0.waterIntakeMl }
+        if !waterEntries.isEmpty {
+            let avgWater = Double(waterEntries.reduce(0, +)) / Double(waterEntries.count)
+            let avgLiters = avgWater / 1000.0
+            let isGood = avgLiters >= 2.0
+
+            trends.append(MetricTrend(
+                title: "Hydration",
+                currentValue: String(format: "%.1fL", avgLiters),
+                change: isGood ? "On target" : "Below target",
+                isPositive: isGood,
+                dataPoints: generateTrendData(baseValue: min(avgLiters / 3.0, 1.0), variance: 0.1),
+                color: isGood ? "blue" : "coral"
+            ))
+        }
+
         return trends
+    }
+
+    private static func generateWeightTrendData(weights: [Double]) -> [CGFloat] {
+        guard weights.count >= 2 else { return [] }
+        let minWeight = weights.min() ?? 0
+        let maxWeight = weights.max() ?? 100
+        let range = maxWeight - minWeight
+        guard range > 0 else {
+            return weights.map { _ in CGFloat(0.5) }
+        }
+        return weights.map { CGFloat(($0 - minWeight) / range) }
     }
 
     private static func generateTrendData(baseValue: Double, variance: Double) -> [CGFloat] {

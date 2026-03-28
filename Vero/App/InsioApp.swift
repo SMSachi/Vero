@@ -7,26 +7,41 @@
 //  ARCHITECTURE:
 //  - AppRoute enum is THE SINGLE SOURCE OF TRUTH for navigation
 //  - No guest mode - authentication is required
-//  - Flow: splash → onboarding (new users) → auth → main
+//  - Flow: onboarding (new users) → auth → main
 //  - Onboarding can be skipped → goes to auth
+//  - MainTabView does NOT mount until authenticated
 //
 
 import SwiftUI
 import SwiftData
 import Combine
 
+// MARK: - Notifications
+
+extension Notification.Name {
+    static let authStateDidChange = Notification.Name("authStateDidChange")
+}
+
+// MARK: - App Route (SINGLE SOURCE OF TRUTH)
+
+/// The ONE place that determines which root screen to show.
+/// Computed directly from AuthService state - no caching, no local copies.
+enum AppRoute: Equatable {
+    case loading
+    case onboarding
+    case auth
+    case main
+}
+
 @main
 struct InsioApp: App {
     @StateObject private var appState = AppState()
-    @StateObject private var authService = AuthService.shared
+    @ObservedObject private var authService = AuthService.shared
     @StateObject private var syncService = SupabaseSyncService.shared
     @StateObject private var premiumManager = PremiumManager.shared
 
     /// Reference to persistence service to ensure it's initialized
     private let persistenceService = PersistenceService.shared
-
-    /// Force view refresh counter - increment this to force SwiftUI to recreate views
-    @State private var forceRefreshID = UUID()
 
     init() {
         print("🚀 InsioApp: init()")
@@ -39,15 +54,14 @@ struct InsioApp: App {
 
     var body: some Scene {
         WindowGroup {
-            // NEW APPROACH: Main content is always mounted, auth is shown as modal
-            AuthGateView()
+            AppRootView()
                 .environmentObject(appState)
                 .environmentObject(authService)
                 .environmentObject(syncService)
                 .environmentObject(premiumManager)
                 .modelContainer(persistenceService.container)
                 .onAppear {
-                    print("🚀 APP BODY: WindowGroup appeared - isAuthenticated=\(authService.isAuthenticated)")
+                    print("🚀 APP BODY: WindowGroup appeared")
                     Task { @MainActor in
                         PremiumManager.shared.checkTrialStatus()
                     }
@@ -56,107 +70,51 @@ struct InsioApp: App {
     }
 }
 
-// MARK: - Auth Gate View (NEW RELIABLE APPROACH)
+// MARK: - App Root View
 
-/// Uses fullScreenCover for auth instead of view replacement.
-/// This is more reliable because the main view is always mounted,
-/// and auth is just a modal that dismisses when authenticated.
-struct AuthGateView: View {
+struct AppRootView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var authService: AuthService
 
-    /// Controls whether to show auth modal
-    @State private var showAuthModal = false
-
-    /// Controls whether to show onboarding modal
-    @State private var showOnboardingModal = false
+    @State private var showMainApp = false
 
     var body: some View {
-        // Main content is ALWAYS the root - no conditional switching
-        MainTabView()
-            .onAppear {
-                print("🚀 AuthGateView: MainTabView mounted")
-                // Check if we need to show auth or onboarding
-                updateModals()
-            }
-            // Show onboarding as fullScreenCover
-            .fullScreenCover(isPresented: $showOnboardingModal) {
-                OnboardingContainerView()
-                    .environmentObject(appState)
-                    .onDisappear {
-                        print("🚀 AuthGateView: Onboarding dismissed")
-                        // After onboarding, check if we need auth
-                        updateModals()
+        ZStack {
+            if showMainApp {
+                MainTabView()
+                    .transition(.move(edge: .trailing))
+                    .onAppear {
+                        print("🧭 ✅ MainTabView APPEARED")
+                        appState.onAuthenticationSuccess()
                     }
-            }
-            // Show auth as fullScreenCover (this dismisses automatically when isAuthenticated changes)
-            .fullScreenCover(isPresented: $showAuthModal) {
-                AuthContainerView()
-                    .environmentObject(appState)
-                    .environmentObject(authService)
-                    .onDisappear {
-                        print("🚀 AuthGateView: Auth modal dismissed")
-                        if authService.isAuthenticated {
-                            appState.onAuthenticationSuccess()
-                        }
-                    }
-            }
-            // CRITICAL: Watch for auth state changes to dismiss modal
-            .onChange(of: authService.isAuthenticated) { _, isAuthenticated in
-                print("🚀 AuthGateView: isAuthenticated changed to \(isAuthenticated)")
-                if isAuthenticated {
-                    // Dismiss auth modal when authenticated
-                    withAnimation {
-                        showAuthModal = false
-                    }
-                } else {
-                    // Show auth modal when not authenticated (after onboarding)
-                    if appState.hasSeenOnboarding {
-                        withAnimation {
-                            showAuthModal = true
-                        }
-                    }
-                }
-            }
-            .onChange(of: appState.hasSeenOnboarding) { _, hasSeen in
-                print("🚀 AuthGateView: hasSeenOnboarding changed to \(hasSeen)")
-                updateModals()
-            }
-    }
-
-    private func updateModals() {
-        print("🚀 AuthGateView: updateModals - isAuthenticated=\(authService.isAuthenticated), hasSeenOnboarding=\(appState.hasSeenOnboarding)")
-
-        // If not authenticated
-        if !authService.isAuthenticated {
-            // First check if onboarding is needed
-            if !appState.hasSeenOnboarding {
-                showOnboardingModal = true
-                showAuthModal = false
             } else {
-                // Onboarding done, show auth
-                showOnboardingModal = false
-                showAuthModal = true
+                authFlow
+                    .transition(.move(edge: .leading))
             }
-        } else {
-            // Authenticated - hide all modals
-            showOnboardingModal = false
-            showAuthModal = false
         }
-
-        print("🚀 AuthGateView: showOnboardingModal=\(showOnboardingModal), showAuthModal=\(showAuthModal)")
+        .animation(.easeInOut(duration: 0.3), value: showMainApp)
+        .onAppear {
+            showMainApp = authService.isAuthenticated
+            print("🧭 AppRootView onAppear: showMainApp=\(showMainApp)")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .authStateDidChange)) { _ in
+            print("🧭 NOTIFICATION RECEIVED - setting showMainApp=true")
+            withAnimation {
+                showMainApp = true
+            }
+        }
     }
-}
 
-// MARK: - App Route (Single Source of Truth)
-
-/// The single source of truth for app routing.
-/// This enum determines what screen is shown.
-enum AppRoute: String {
-    case splash = "splash"           // Initial loading state (max 2 seconds)
-    case onboarding = "onboarding"   // First-time user onboarding
-    case auth = "auth"               // Sign in / Sign up
-    case main = "main"               // Authenticated user - main app
+    @ViewBuilder
+    private var authFlow: some View {
+        if authService.isLoading {
+            SplashLoadingView()
+        } else if !appState.hasSeenOnboarding {
+            OnboardingContainerView()
+        } else {
+            AuthContainerView()
+        }
+    }
 }
 
 // MARK: - App State
@@ -221,30 +179,6 @@ class AppState: ObservableObject {
         print("🧭 AppState: init - hasCompletedOnboarding=\(hasCompletedOnboarding), hasSeenOnboarding=\(hasSeenOnboarding)")
     }
 
-    // MARK: - Route Computation
-
-    /// Compute the current route based on app state.
-    /// This is THE SINGLE SOURCE OF TRUTH for routing.
-    func computeRoute(isAuthLoading: Bool, isAuthenticated: Bool) -> AppRoute {
-        // 1. If auth is still loading, show splash (but with timeout protection)
-        if isAuthLoading {
-            return .splash
-        }
-
-        // 2. If user is authenticated, go to main app
-        if isAuthenticated {
-            return .main
-        }
-
-        // 3. If user hasn't seen onboarding yet, show onboarding
-        if !hasSeenOnboarding {
-            return .onboarding
-        }
-
-        // 4. Otherwise, show auth
-        return .auth
-    }
-
     // MARK: - Auth Helpers
 
     /// Called when user successfully authenticates
@@ -255,6 +189,9 @@ class AppState: ObservableObject {
         print("🧭 AppState: UI should render MainTabView NOW")
         print("🧭 AppState: Background restore will start after UI renders")
         print("🧭 ══════════════════════════════════════════════════")
+
+        // Check for pending check-ins FIRST (quick, local operation)
+        checkForPendingCheckIns()
 
         // CRITICAL: Use Task.detached to ensure this doesn't block main actor
         // The regular Task {} inherits @MainActor context and can block UI rendering
@@ -324,6 +261,7 @@ class AppState: ObservableObject {
     // MARK: - Automated Check-In
 
     /// Check for pending check-ins on app activation.
+    /// Called when MainTabView appears (after auth success) and on scene phase changes.
     func checkForPendingCheckIns() {
         print("📱 AppState: checkForPendingCheckIns() called")
         workoutMonitor.checkForPendingCheckIns()
@@ -339,12 +277,15 @@ class AppState: ObservableObject {
             triggerPostWorkoutCheckIn(for: workout)
         }
 
-        // Trigger next-day check-in if pending
+        // Trigger next-day check-in if pending (PART 6 fix)
         if workoutMonitor.hasPendingNextDayCheckIn,
            let workout = workoutMonitor.pendingWorkoutForNextDayCheckIn,
            workoutMonitor.shouldShowNextDayCheckIn() {
             print("📱 AppState: ⚠️ TRIGGERING next-day check-in for workout \(workout.id)")
-            triggerNextDayCheckIn(for: workout.id)
+            // Small delay to let UI settle first
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.triggerNextDayCheckIn(for: workout.id)
+            }
         }
     }
 
@@ -361,11 +302,21 @@ class AppState: ObservableObject {
     // MARK: - Check-In Triggers
 
     func triggerPostWorkoutCheckIn(for workout: Workout) {
+        // Prevent duplicate triggers
+        guard !showPostWorkoutCheckIn else {
+            print("📱 AppState: Post-workout check-in already showing, skipping duplicate trigger")
+            return
+        }
         checkInWorkout = workout
         showPostWorkoutCheckIn = true
     }
 
     func triggerNextDayCheckIn(for workoutId: UUID? = nil) {
+        // Prevent duplicate triggers
+        guard !showNextDayCheckIn else {
+            print("📱 AppState: Next-day check-in already showing, skipping duplicate trigger")
+            return
+        }
         nextDayCheckInWorkoutId = workoutId
         showNextDayCheckIn = true
     }
@@ -380,6 +331,7 @@ class AppState: ObservableObject {
 
         print("📱 AppState: Saving post-workout check-in for \(workout.id)")
 
+        // Local save first (immediate)
         PersistenceService.shared.savePostWorkoutCheckIn(
             workoutId: workout.id,
             feeling: feeling,
@@ -388,31 +340,39 @@ class AppState: ObservableObject {
 
         workoutMonitor.postWorkoutCheckInCompleted(for: workout.id)
 
+        // Dismiss UI immediately
+        showPostWorkoutCheckIn = false
+        checkInWorkout = nil
+
+        // Background sync (non-blocking)
         if authService.isAuthenticated {
-            Task {
-                await syncService.syncPostWorkoutCheckIn(
+            Task.detached(priority: .utility) { [syncService] in
+                await syncService.syncPostWorkoutCheckInWithTimeout(
                     workoutId: workout.id,
                     feeling: feeling,
                     note: note
                 )
             }
         }
-
-        showPostWorkoutCheckIn = false
     }
 
     func completeNextDayCheckIn(bodyFeeling: String) {
+        let workoutId = nextDayCheckInWorkoutId
+
+        // Local save first (immediate)
         PersistenceService.shared.saveNextDayCheckIn(
             recoveryId: nil,
-            workoutId: nextDayCheckInWorkoutId,
+            workoutId: workoutId,
             bodyFeeling: bodyFeeling
         )
 
-        if let workoutId = nextDayCheckInWorkoutId {
+        if let workoutId = workoutId {
             workoutMonitor.nextDayCheckInCompleted(for: workoutId)
         }
 
+        // Dismiss UI immediately
         showNextDayCheckIn = false
+        nextDayCheckInWorkoutId = nil
     }
 
     func skipPostWorkoutCheckIn() {
@@ -420,6 +380,7 @@ class AppState: ObservableObject {
             workoutMonitor.postWorkoutCheckInSkipped(for: workout.id)
         }
         showPostWorkoutCheckIn = false
+        checkInWorkout = nil
     }
 
     func skipNextDayCheckIn() {
@@ -427,187 +388,8 @@ class AppState: ObservableObject {
             workoutMonitor.nextDayCheckInSkipped(for: workoutId)
         }
         showNextDayCheckIn = false
+        nextDayCheckInWorkoutId = nil
     }
-}
-
-// MARK: - Root View
-
-struct RootView: View {
-    @EnvironmentObject var appState: AppState
-    @EnvironmentObject var authService: AuthService
-
-    /// Timeout protection - force exit splash after 2 seconds
-    @State private var splashTimeout = false
-    @State private var timeoutStarted = false
-
-    /// Current route - stored as @State for reliable SwiftUI updates
-    @State private var currentRoute: AppRoute = .splash
-
-    var body: some View {
-        // DEBUG: Log every body evaluation
-        let _ = print("🧭 RootView: body EVALUATING - currentRoute = \(currentRoute.rawValue)")
-
-        // NUCLEAR FIX: Use switch + .id() to FORCE complete view replacement
-        // The .id() modifier destroys and recreates the entire view when route changes
-        Group {
-            switch currentRoute {
-            case .splash:
-                SplashLoadingView()
-                    .onAppear {
-                        print("🧭 SplashLoadingView: onAppear")
-                        startTimeoutProtection()
-                    }
-
-            case .onboarding:
-                OnboardingContainerView()
-                    .onAppear {
-                        print("🧭 OnboardingContainerView: onAppear")
-                    }
-
-            case .auth:
-                AuthContainerView()
-                    .onAppear {
-                        print("🧭 AuthContainerView: onAppear")
-                    }
-                    .onDisappear {
-                        print("🧭 AuthContainerView: onDisappear")
-                    }
-
-            case .main:
-                MainTabView()
-                    .onAppear {
-                        print("🧭 ✅✅✅ MainTabView: onAppear - MAIN APP VISIBLE ✅✅✅")
-                    }
-            }
-        }
-        // CRITICAL: .id() forces SwiftUI to DESTROY and RECREATE the view when route changes
-        // This is the nuclear option - it guarantees the old view is completely removed
-        .id(currentRoute)
-        // CRITICAL: Update route when auth state changes
-        .onChange(of: authService.isAuthenticated) { _, isAuthenticated in
-            print("🧭 RootView: ⚡⚡⚡ isAuthenticated CHANGED to \(isAuthenticated) ⚡⚡⚡")
-
-            // STEP 1: Dismiss keyboard FIRST - this is critical
-            dismissKeyboard()
-
-            // STEP 2: Force window to resign first responder
-            forceWindowRefresh()
-
-            // STEP 3: Update route with animation to force SwiftUI to redraw
-            withAnimation(.easeInOut(duration: 0.3)) {
-                updateRoute(reason: "isAuthenticated changed to \(isAuthenticated)")
-            }
-
-            if isAuthenticated {
-                // STEP 4: Call success handler after a brief delay to let animation complete
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    print("🧭 RootView: Post-render - calling onAuthenticationSuccess")
-                    appState.onAuthenticationSuccess()
-                }
-            }
-        }
-        .onChange(of: authService.isLoading) { _, isLoading in
-            print("🧭 RootView: isLoading changed to \(isLoading)")
-            updateRoute(reason: "isLoading changed to \(isLoading)")
-        }
-        .onChange(of: appState.hasSeenOnboarding) { _, hasSeen in
-            print("🧭 RootView: hasSeenOnboarding changed to \(hasSeen)")
-            updateRoute(reason: "hasSeenOnboarding changed to \(hasSeen)")
-        }
-        .onChange(of: splashTimeout) { _, timeout in
-            if timeout {
-                print("🧭 RootView: splashTimeout triggered")
-                updateRoute(reason: "splashTimeout triggered")
-            }
-        }
-        .onAppear {
-            print("🧭 ══════════════════════════════════════════════════")
-            print("🧭 RootView [v2]: APPEARED - NEW CODE RUNNING")
-            print("🧭 RootView [v2]: isLoading=\(authService.isLoading)")
-            print("🧭 RootView [v2]: isAuthenticated=\(authService.isAuthenticated)")
-            print("🧭 RootView [v2]: hasSeenOnboarding=\(appState.hasSeenOnboarding)")
-            print("🧭 ══════════════════════════════════════════════════")
-            // Compute initial route
-            updateRoute(reason: "onAppear")
-        }
-    }
-
-    /// Update the current route based on app state
-    /// This is called whenever any relevant state changes
-    private func updateRoute(reason: String) {
-        let effectiveIsLoading = splashTimeout ? false : authService.isLoading
-        let newRoute = appState.computeRoute(
-            isAuthLoading: effectiveIsLoading,
-            isAuthenticated: authService.isAuthenticated
-        )
-
-        if newRoute != currentRoute {
-            print("🧭 ══════════════════════════════════════════════════")
-            print("🧭 ROUTE TRANSITION: \(currentRoute.rawValue) → \(newRoute.rawValue)")
-            print("🧭 Reason: \(reason)")
-            print("🧭 State: isLoading=\(authService.isLoading), isAuthenticated=\(authService.isAuthenticated)")
-            print("🧭 ══════════════════════════════════════════════════")
-
-            // Direct assignment - the .id(currentRoute) modifier handles view replacement
-            currentRoute = newRoute
-            print("🧭 ✅ currentRoute @State UPDATED to: \(currentRoute.rawValue)")
-        } else {
-            print("🧭 RootView: Route unchanged (\(currentRoute.rawValue)) - \(reason)")
-        }
-    }
-
-    /// Dismiss keyboard aggressively
-    private func dismissKeyboard() {
-        // Method 1: Standard resignFirstResponder
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-
-        // Method 2: End editing on all windows
-        for scene in UIApplication.shared.connectedScenes {
-            if let windowScene = scene as? UIWindowScene {
-                for window in windowScene.windows {
-                    window.endEditing(true)
-                }
-            }
-        }
-
-        print("🧭 RootView: Keyboard dismissed")
-    }
-
-    /// Force window to refresh its layout
-    private func forceWindowRefresh() {
-        for scene in UIApplication.shared.connectedScenes {
-            if let windowScene = scene as? UIWindowScene {
-                for window in windowScene.windows {
-                    // Force layout pass
-                    window.layoutIfNeeded()
-                    // Force redraw
-                    window.setNeedsLayout()
-                    window.setNeedsDisplay()
-                }
-            }
-        }
-        print("🧭 RootView: Window refresh forced")
-    }
-
-    /// Start 2-second timeout protection for splash screen
-    private func startTimeoutProtection() {
-        guard !timeoutStarted else { return }
-        timeoutStarted = true
-
-        print("🧭 RootView: Starting 2-second splash timeout protection")
-
-        Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-
-            await MainActor.run {
-                if authService.isLoading && !splashTimeout {
-                    print("🧭 ⚠️ RootView: SPLASH TIMEOUT - forcing exit from splash")
-                    splashTimeout = true
-                }
-            }
-        }
-    }
-
 }
 
 // MARK: - Splash Loading View
@@ -642,7 +424,7 @@ struct SplashLoadingView: View {
 }
 
 #Preview {
-    RootView()
+    AppRootView()
         .environmentObject(AppState())
         .environmentObject(AuthService.shared)
 }

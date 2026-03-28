@@ -614,7 +614,10 @@ struct WorkoutMetaStrip: View {
         HStack(spacing: AppSpacing.lg) {
             MetaItem(icon: workout.type.icon, value: workout.type.rawValue)
             MetaItem(icon: "clock", value: workout.durationFormatted)
-            MetaItem(icon: "flame.fill", value: "\(workout.calories) cal")
+            // Only show calories if from real data (HealthKit)
+            if workout.calories > 0 {
+                MetaItem(icon: "flame.fill", value: "\(workout.calories) cal")
+            }
 
             Spacer()
         }

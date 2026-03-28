@@ -1,9 +1,14 @@
 //
 //  HomeView.swift
-//  Insio Health
+//  Vero
 //
-//  Home dashboard - unified design system
-//  Uses HomeViewModel to fetch real HealthKit data with mock fallback
+//  BOLD HOME DASHBOARD - Unique, Expressive, Show-off Worthy
+//
+//  Design Philosophy:
+//    - Premium but exciting
+//    - Controlled bold color
+//    - Screenshot-worthy UI
+//    - NOT generic Apple Health style
 //
 
 import SwiftUI
@@ -12,110 +17,156 @@ import SwiftUI
 
 struct HomeDashboardView: View {
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var authService: AuthService
     @Environment(\.scenePhase) private var scenePhase
 
     @StateObject private var viewModel = HomeViewModel()
+    @StateObject private var goalService = UserGoalService.shared
     @StateObject private var healthKitService = HealthKitService.shared
 
     @State private var navigateToWorkoutInsight = false
     @State private var showAddWorkout = false
-    @State private var isConnectingHealth = false
+    @State private var showDailyLog = false
+    @State private var showWaterLog = false
+    @State private var showSleepLog = false
+    @State private var showWeightLog = false
+    @State private var animateProgress = false
 
-    // Animation states
-    @State private var headerVisible = false
-    @State private var heroVisible = false
-    @State private var contextVisible = false
-    @State private var weeklyVisible = false
-    @State private var recoveryVisible = false
-    @State private var trendVisible = false
+    private var displayName: String {
+        if authService.isAuthenticated {
+            if let metadata = authService.currentUser?.userMetadata,
+               let nameValue = metadata["full_name"],
+               case .string(let fullName) = nameValue,
+               !fullName.isEmpty {
+                // Get first name only
+                return fullName.components(separatedBy: " ").first ?? fullName
+            }
+            if let email = authService.currentUser?.email {
+                return email.components(separatedBy: "@").first ?? email
+            }
+        }
+        return "there"
+    }
+
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 5..<12: return "Good morning"
+        case 12..<17: return "Good afternoon"
+        case 17..<21: return "Good evening"
+        default: return "Good night"
+        }
+    }
 
     var body: some View {
-        // DEBUG: Log body evaluation
-        let _ = print("🏠 HomeDashboardView: body EVALUATING")
-
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                VStack(spacing: AppSpacing.Layout.sectionSpacing) {
+                VStack(spacing: 14) {
 
-                    // 1. HEADER
-                    HomeHeader()
-                        .opacity(headerVisible ? 1 : 0)
-                        .offset(y: headerVisible ? 0 : 15)
+                    // ═══════════════════════════════════════════════════
+                    // GREETING HEADER
+                    // ═══════════════════════════════════════════════════
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(greeting), \(displayName)")
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppColors.textPrimary)
 
-                    // Show empty state when no real data
-                    if viewModel.showEmptyState {
-                        HomeEmptyState(
-                            onConnectHealth: {
-                                connectHealthKit()
-                            },
-                            onAddWorkout: {
+                        Text(Date(), format: .dateTime.weekday(.wide).month(.wide).day())
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+
+                    // ═══════════════════════════════════════════════════
+                    // PART 1: HERO (Brand Moment)
+                    // ═══════════════════════════════════════════════════
+                    HeroCard(
+                        workoutsThisWeek: viewModel.workoutsThisWeek,
+                        streak: viewModel.currentStreak,
+                        hasWorkout: viewModel.latestWorkout != nil,
+                        onTap: {
+                            if viewModel.latestWorkout != nil {
+                                navigateToWorkoutInsight = true
+                            } else {
                                 showAddWorkout = true
-                            },
-                            isConnecting: isConnectingHealth,
-                            healthKitStatus: healthKitService.authorizationStatus,
-                            connectionState: healthKitService.connectionState
-                        )
-                        .opacity(heroVisible ? 1 : 0)
-                        .offset(y: heroVisible ? 0 : 15)
-                    } else {
-                        // 2. HERO CARD
-                        // Shows workout if recent (<18 hours), otherwise shows readiness
-                        // Uses InterpretationEngine-generated summary for the one-liner
-                        Group {
-                            if viewModel.showWorkoutAsHero, let workout = viewModel.latestWorkout {
-                                WorkoutHeroCard(
-                                    workout: workout,
-                                    interpretation: viewModel.workoutInterpretation
-                                ) {
-                                    navigateToWorkoutInsight = true
-                                }
-                            } else if let recovery = viewModel.recovery {
-                                ReadinessHeroCard(recovery: recovery)
                             }
                         }
-                        .opacity(heroVisible ? 1 : 0)
-                        .offset(y: heroVisible ? 0 : 15)
+                    )
+                    .padding(.horizontal, 20)
 
-                        // 3. CONTEXT CHIPS
-                        // Shows sleep, water, and energy from HealthKit (or mock)
-                        if let context = viewModel.dailyContext {
-                            HomeContextRow(
-                                context: context,
-                                waterIntake: viewModel.waterIntake
+                    // ═══════════════════════════════════════════════════
+                    // PART 2: ASYMMETRICAL GRID
+                    // ═══════════════════════════════════════════════════
+                    VStack(spacing: 10) {
+                        // Row 1: Workouts (LARGER) + Sleep
+                        HStack(spacing: 10) {
+                            WorkoutsCard(
+                                count: viewModel.workoutsThisWeek,
+                                streak: viewModel.currentStreak,
+                                animate: animateProgress,
+                                onTap: { showAddWorkout = true }
                             )
-                            .opacity(contextVisible ? 1 : 0)
-                            .offset(y: contextVisible ? 0 : 12)
+                            .frame(minWidth: 0, maxWidth: .infinity)
+                            .aspectRatio(1.2, contentMode: .fit)
+
+                            SleepCard(
+                                hours: viewModel.dailyContext?.sleepHours,
+                                animate: animateProgress,
+                                onTap: { showSleepLog = true }
+                            )
+                            .frame(width: 130)
                         }
 
-                        // 4. WEEKLY SUMMARY CARD
-                        WeeklySummaryCard(
-                            workoutsThisWeek: viewModel.workoutsThisWeek,
-                            currentStreak: viewModel.currentStreak,
-                            recentWorkouts: viewModel.recentWorkouts
-                        )
-                        .opacity(weeklyVisible ? 1 : 0)
-                        .offset(y: weeklyVisible ? 0 : 12)
-
-                        // 5. RECOVERY INSIGHT CARD
-                        if let recovery = viewModel.recovery {
-                            RecoveryInsightCard(
-                                recovery: recovery,
-                                dailyContext: viewModel.dailyContext
+                        // Row 2: Hydration + Weight (smaller)
+                        HStack(spacing: 10) {
+                            HydrationCard(
+                                liters: viewModel.waterIntake,
+                                animate: animateProgress,
+                                onTap: { showWaterLog = true }
                             )
-                            .opacity(recoveryVisible ? 1 : 0)
-                            .offset(y: recoveryVisible ? 0 : 12)
-                        }
 
-                        // 6. TREND PREVIEW
-                        TrendPreviewCard(hrvScore: viewModel.dailyContext?.hrvScore)
-                            .opacity(trendVisible ? 1 : 0)
-                            .offset(y: trendVisible ? 0 : 10)
+                            if goalService.shouldShowWeightUI {
+                                WeightCard(
+                                    currentWeight: viewModel.dailyContext?.weightKg,
+                                    weeklyDelta: viewModel.weeklyWeightDelta,
+                                    onTap: { showWeightLog = true }
+                                )
+                            } else {
+                                ReadinessCard(
+                                    score: viewModel.recovery?.overallScore,
+                                    animate: animateProgress,
+                                    onTap: { showDailyLog = true }
+                                )
+                            }
+                        }
+                        .frame(height: 88)
                     }
+                    .padding(.horizontal, 20)
+
+                    // ═══════════════════════════════════════════════════
+                    // PART 6: WEEKLY TRACKER (Upgraded)
+                    // ═══════════════════════════════════════════════════
+                    WeeklyTracker(
+                        workoutsThisWeek: viewModel.workoutsThisWeek,
+                        animate: animateProgress
+                    )
+                    .padding(.horizontal, 20)
+
+                    // ═══════════════════════════════════════════════════
+                    // PART 5: SINGLE STRONG CTA
+                    // ═══════════════════════════════════════════════════
+                    PrimaryCTA(
+                        onLogWorkout: { showAddWorkout = true },
+                        onLogDaily: { showDailyLog = true }
+                    )
+                    .padding(.horizontal, 20)
+
+                    Spacer().frame(height: 20)
                 }
-                .padding(.top, AppSpacing.Layout.topPadding)
-                .padding(.bottom, AppSpacing.Layout.bottomScrollPadding)
+                .padding(.top, 12)
             }
-            .background(AppColors.background)
+            .background(AppColors.background.ignoresSafeArea())
             .navigationBarHidden(true)
             .navigationDestination(isPresented: $navigateToWorkoutInsight) {
                 if let workout = viewModel.latestWorkout {
@@ -127,646 +178,735 @@ struct HomeDashboardView: View {
             }
         }
         .task {
-            print("🏠 HomeDashboardView: Starting loadData task...")
-            // Load HealthKit data when view appears
             await viewModel.loadData()
-            print("🏠 HomeDashboardView: loadData task completed")
-
-            // Notify AppState about the loaded workout (for check-in automation)
-            if viewModel.hasRealData, let workout = viewModel.latestWorkout {
-                appState.workoutWasSaved(workout)
-            }
         }
         .onAppear {
-            print("🏠 ══════════════════════════════════════════════════")
             print("🏠 HomeDashboardView: APPEARED")
-            print("🏠 HomeDashboardView: isLoading = \(viewModel.isLoading)")
-            print("🏠 HomeDashboardView: hasRealData = \(viewModel.hasRealData)")
-            print("🏠 HomeDashboardView: showEmptyState = \(viewModel.showEmptyState)")
-            print("🏠 ══════════════════════════════════════════════════")
-            startEntranceAnimations()
-
-            // Refresh analytics from local cache (picks up newly added workouts)
             viewModel.refreshAnalytics()
+            // Trigger animations after slight delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                withAnimation(.easeOut(duration: 0.8)) {
+                    animateProgress = true
+                }
+            }
         }
         .sheet(isPresented: $showAddWorkout) {
             AddWorkoutView(onSave: { _ in
                 viewModel.refreshAnalytics()
             })
         }
+        .sheet(isPresented: $showDailyLog) {
+            DailyContextInputView(onSave: {
+                viewModel.refreshAnalytics()
+            })
+        }
+        .sheet(isPresented: $showWaterLog) {
+            WaterLoggingView(onSave: {
+                viewModel.refreshAnalytics()
+            })
+        }
+        .sheet(isPresented: $showSleepLog) {
+            SleepLoggingView(onSave: {
+                viewModel.refreshAnalytics()
+            })
+        }
+        .sheet(isPresented: $showWeightLog) {
+            WeightLoggingView(onSave: {
+                viewModel.refreshAnalytics()
+            })
+        }
         .onChange(of: scenePhase) { oldPhase, newPhase in
-            // Re-check HealthKit status when returning from Settings
             if newPhase == .active && oldPhase == .inactive {
-                print("🏠 HomeView: Scene became active - refreshing HealthKit status")
                 Task {
                     await healthKitService.refreshAuthorizationStatus()
-
-                    // If now authorized, reload data
                     if healthKitService.authorizationStatus == .authorized {
-                        print("🏠 HomeView: HealthKit now authorized - reloading data")
                         await viewModel.loadData()
+                    }
+                }
+                // Re-trigger animations
+                animateProgress = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    withAnimation(.easeOut(duration: 0.8)) {
+                        animateProgress = true
                     }
                 }
             }
         }
     }
-
-    private func connectHealthKit() {
-        print("🏠 HomeView: connectHealthKit() called")
-        isConnectingHealth = true
-
-        Task {
-            let success = await healthKitService.requestAuthorization()
-            print("🏠 HomeView: Authorization result: \(success)")
-
-            if success {
-                print("🏠 HomeView: Authorization succeeded - loading data")
-                await viewModel.loadData()
-            }
-
-            await MainActor.run {
-                isConnectingHealth = false
-            }
-        }
-    }
-
-    private func startEntranceAnimations() {
-        withAnimation(AppAnimation.entrance.delay(0.1)) {
-            headerVisible = true
-        }
-        withAnimation(AppAnimation.springGentle.delay(0.15)) {
-            heroVisible = true
-        }
-        withAnimation(AppAnimation.entrance.delay(0.25)) {
-            contextVisible = true
-        }
-        withAnimation(AppAnimation.entrance.delay(0.35)) {
-            weeklyVisible = true
-        }
-        withAnimation(AppAnimation.entrance.delay(0.45)) {
-            recoveryVisible = true
-        }
-        withAnimation(AppAnimation.entrance.delay(0.55)) {
-            trendVisible = true
-        }
-    }
 }
 
-// MARK: - 1. Home Header
+// ═══════════════════════════════════════════════════════════════════════════════
+// MARK: - PART 1: HERO CARD (Bold Brand Moment)
+// ═══════════════════════════════════════════════════════════════════════════════
 
-struct HomeHeader: View {
-    @EnvironmentObject var authService: AuthService
+private struct HeroCard: View {
+    let workoutsThisWeek: Int
+    let streak: Int
+    let hasWorkout: Bool
+    let onTap: () -> Void
 
-    private var greeting: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        switch hour {
-        case 5..<12: return "Good morning"
-        case 12..<17: return "Good afternoon"
-        case 17..<21: return "Good evening"
-        default: return "Hey there"
+    private var headline: String {
+        switch workoutsThisWeek {
+        case 0: return "Ready to Start"
+        case 1: return "First Step"
+        case 2: return "Building Up"
+        case 3: return "Momentum"
+        case 4: return "Strong Week"
+        case 5: return "Crushing It"
+        case 6...: return "On Fire"
+        default: return "Your Week"
         }
     }
 
-    private var dateString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMM d"
-        return formatter.string(from: Date())
-    }
-
-    /// Get user's display name from auth, or friendly fallback
-    private var displayName: String {
-        if authService.isAuthenticated {
-            // Try full name from metadata (AnyJSON requires pattern matching)
-            if let metadata = authService.currentUser?.userMetadata,
-               let nameValue = metadata["full_name"],
-               case .string(let fullName) = nameValue,
-               !fullName.isEmpty {
-                return fullName.components(separatedBy: " ").first ?? fullName
-            }
-            // Fall back to email prefix
-            if let email = authService.currentUser?.email {
-                return email.components(separatedBy: "@").first ?? "there"
-            }
+    private var supportingText: String {
+        if workoutsThisWeek == 0 {
+            return "Tap to log your first workout"
         }
-        return "there"
+        var parts: [String] = []
+        parts.append("\(workoutsThisWeek) workout\(workoutsThisWeek == 1 ? "" : "s")")
+        if streak > 1 {
+            parts.append("\(streak) day streak")
+        }
+        if workoutsThisWeek >= 5 {
+            parts.append("peak week")
+        }
+        return parts.joined(separator: " · ")
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(dateString.uppercased())
-                .font(AppTypography.miniLabel)
-                .foregroundStyle(AppColors.textTertiary)
-                .tracking(0.8)
+        Button(action: onTap) {
+            ZStack {
+                // Background with gradient
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                AppColors.burntOrange,
+                                AppColors.burntOrange.opacity(0.85)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
 
-            Text("\(greeting), \(displayName)")
-                .font(AppTypography.screenTitle)
-                .foregroundStyle(AppColors.textPrimary)
+                // Subtle texture overlay
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.15),
+                                Color.clear,
+                                Color.black.opacity(0.05)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+
+                // Content
+                VStack(alignment: .leading, spacing: 6) {
+                    // Label
+                    Text("THIS WEEK")
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(1.2)
+                        .foregroundStyle(.white.opacity(0.8))
+
+                    Spacer()
+
+                    // Large statement
+                    Text(headline)
+                        .font(.system(size: 30, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
+
+                    // Supporting line
+                    HStack(spacing: 5) {
+                        if streak > 1 {
+                            Image(systemName: "flame.fill")
+                                .font(.system(size: 11))
+                        }
+                        Text(supportingText)
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(.white.opacity(0.9))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+
+                // Arrow indicator
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.white.opacity(0.3))
+                    }
+                }
+                .padding(18)
+            }
+            .frame(height: 140)
+            .shadow(color: AppColors.burntOrange.opacity(0.35), radius: 16, y: 8)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
+        .buttonStyle(BoldCardButtonStyle())
     }
 }
 
-// MARK: - 2. Workout Hero Card
+// ═══════════════════════════════════════════════════════════════════════════════
+// MARK: - PART 2 & 3: METRIC CARDS (Asymmetric + Color Identity)
+// ═══════════════════════════════════════════════════════════════════════════════
 
-struct WorkoutHeroCard: View {
-    let workout: Workout
-    var interpretation: WorkoutInterpretation? = nil
+private struct WorkoutsCard: View {
+    let count: Int
+    let streak: Int
+    let animate: Bool
     let onTap: () -> Void
 
-    /// One-liner summary from InterpretationEngine, or fallback to workout.interpretation
-    private var oneLiner: String {
-        // Use interpretation summary if available
-        if let interp = interpretation {
-            return interp.summaryText
-        }
+    private let goal = 5
+    private var progress: Double { min(Double(count) / Double(goal), 1.0) }
 
-        // Fallback to workout's built-in interpretation
-        let full = workout.interpretation
-        if let dotIndex = full.firstIndex(of: ".") {
-            return String(full[...dotIndex])
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 6) {
+                // Header with icon
+                HStack {
+                    Image(systemName: "figure.run")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppColors.burntOrange)
+
+                    Text("WORKOUTS")
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(0.5)
+                        .foregroundStyle(AppColors.textTertiary)
+
+                    Spacer()
+                }
+
+                Spacer()
+
+                // Value
+                HStack(alignment: .lastTextBaseline, spacing: 3) {
+                    Text("\(count)")
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppColors.textPrimary)
+
+                    Text("/\(goal)")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(AppColors.textTertiary)
+                }
+
+                // Streak badge
+                if streak > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 10))
+                        Text("\(streak)d streak")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(AppColors.burntOrange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AppColors.burntOrange.opacity(0.12))
+                    .clipShape(Capsule())
+                }
+
+                // Animated progress bar
+                AnimatedProgressBar(
+                    progress: progress,
+                    color: AppColors.burntOrange,
+                    animate: animate
+                )
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .shadow(color: .black.opacity(0.08), radius: 15, y: 5)
+            // Orange accent line at top
+            .overlay(
+                VStack {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(AppColors.burntOrange)
+                        .frame(width: 40, height: 3)
+                        .padding(.top, 12)
+                    Spacer()
+                }
+            )
         }
-        return full
+        .buttonStyle(BoldCardButtonStyle())
+    }
+}
+
+private struct SleepCard: View {
+    let hours: Double?
+    let animate: Bool
+    let onTap: () -> Void
+
+    private var display: String {
+        guard let h = hours, h > 0 else { return "—" }
+        return String(format: "%.1f", h)
     }
 
-    /// Accent color based on interpretation sentiment or workout intensity
-    private var accentColor: Color {
-        if let interp = interpretation {
-            switch interp.sentiment {
-            case .positive: return AppColors.olive
-            case .neutral: return AppColors.navy
-            case .caution: return AppColors.coral
-            }
-        }
+    private var progress: Double {
+        guard let h = hours, h > 0 else { return 0 }
+        return min(h / 8.0, 1.0)
+    }
 
-        switch workout.intensity {
-        case .low: return AppColors.olive
-        case .moderate: return AppColors.navy
-        case .high: return AppColors.coral
-        case .max: return AppColors.orange
+    private var quality: String {
+        guard let h = hours else { return "Log sleep" }
+        switch h {
+        case 7.5...: return "Great"
+        case 6.5..<7.5: return "Good"
+        case 5..<6.5: return "Low"
+        default: return "Poor"
         }
     }
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 6) {
-                    Image(systemName: workout.type.icon)
-                        .font(.system(size: AppSpacing.Icon.small, weight: .semibold))
-                    Text(workout.type.rawValue)
-                        .font(AppTypography.labelMedium)
-                }
-                .foregroundStyle(accentColor)
-
-                Text(oneLiner)
-                    .font(AppTypography.cardTitle)
-                    .foregroundStyle(AppColors.textPrimary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-
-                HStack(spacing: 16) {
-                    MetricChip(value: workout.durationFormatted, icon: "clock")
-                    if let avgHR = workout.averageHeartRate {
-                        MetricChip(value: "\(avgHR)", icon: "heart.fill")
-                    }
-                    MetricChip(value: "\(workout.calories)", icon: "flame.fill")
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: AppSpacing.Icon.small, weight: .semibold))
-                        .foregroundStyle(AppColors.textTertiary)
-                }
-            }
-            .standardCardWithMargin()
-        }
-        .buttonStyle(CardButtonStyle())
-    }
-}
-
-struct MetricChip: View {
-    let value: String
-    let icon: String
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(AppColors.textTertiary)
-
-            Text(value)
-                .font(AppTypography.cardSubtitle)
-                .foregroundStyle(AppColors.textSecondary)
-        }
-    }
-}
-
-// MARK: - 2b. Readiness Hero Card
-
-struct ReadinessHeroCard: View {
-    let recovery: NextDayRecovery
-
-    private var oneLiner: String {
-        switch recovery.overallScore {
-        case 85...: return "Fully recovered. Push if you want."
-        case 70..<85: return "Ready for today."
-        case 50..<70: return "Still recovering. Take it easy."
-        default: return "Your body needs rest."
-        }
-    }
-
-    private var scoreColor: Color {
-        switch recovery.overallScore {
-        case 70...: return AppColors.olive
-        case 50..<70: return AppColors.coral
-        default: return AppColors.recoveryLow
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .stroke(scoreColor.opacity(0.15), lineWidth: 5)
-
-                Circle()
-                    .trim(from: 0, to: CGFloat(recovery.overallScore) / 100)
-                    .stroke(scoreColor, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-
-                Text("\(recovery.overallScore)")
-                    .font(AppTypography.statValue)
-                    .foregroundStyle(AppColors.textPrimary)
-            }
-            .frame(width: 52, height: 52)
-
             VStack(alignment: .leading, spacing: 4) {
-                Text("READINESS")
-                    .font(AppTypography.miniLabel)
-                    .foregroundStyle(scoreColor)
-                    .tracking(0.8)
-
-                Text(oneLiner)
-                    .font(AppTypography.cardTitle)
-                    .foregroundStyle(AppColors.textPrimary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-        }
-        .standardCardWithMargin()
-    }
-}
-
-// MARK: - 3. Context Chips Row
-
-struct HomeContextRow: View {
-    let context: DailyContext
-    let waterIntake: Double
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ContextChip(
-                icon: "moon.zzz.fill",
-                value: String(format: "%.0f", context.sleepHours),
-                unit: "hrs",
-                color: .indigo
-            )
-
-            ContextChip(
-                icon: "drop.fill",
-                value: String(format: "%.1f", waterIntake),
-                unit: "L",
-                color: .blue
-            )
-
-            ContextChip(
-                icon: "bolt.fill",
-                value: context.energyLevel == .high || context.energyLevel == .peak ? "Good" : "Low",
-                unit: "",
-                color: AppColors.coral
-            )
-        }
-        .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
-    }
-}
-
-struct ContextChip: View {
-    let icon: String
-    let value: String
-    let unit: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: icon)
-                .font(.system(size: AppSpacing.Icon.small, weight: .medium))
-                .foregroundStyle(color)
-
-            Text(value)
-                .font(AppTypography.cardSubtitle)
-                .foregroundStyle(AppColors.textPrimary)
-
-            if !unit.isEmpty {
-                Text(unit)
-                    .font(AppTypography.miniLabel)
-                    .foregroundStyle(AppColors.textTertiary)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity)
-        .background(color.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.radiusMedium, style: .continuous))
-    }
-}
-
-// MARK: - 4. Weekly Summary Card (Honest Data)
-
-struct WeeklySummaryCard: View {
-    var workoutsThisWeek: Int
-    var currentStreak: Int
-    var recentWorkouts: [Workout]  // Pass workouts to avoid persistence calls during body
-
-    // Real workout days from passed workouts (no persistence calls during body evaluation!)
-    private var workoutDaysThisWeek: Set<Int> {
-        let calendar = Calendar.current
-        let today = Date()
-        guard let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) else {
-            return []
-        }
-
-        var days: Set<Int> = []
-
-        for workout in recentWorkouts {
-            if let daysDiff = calendar.dateComponents([.day], from: weekStart, to: workout.startDate).day,
-               daysDiff >= 0 && daysDiff < 7 {
-                days.insert(daysDiff)
-            }
-        }
-        return days
-    }
-
-    private var todayIndex: Int {
-        let weekday = Calendar.current.component(.weekday, from: Date())
-        // Convert Sunday=1 to Monday=0 based index
-        return weekday == 1 ? 6 : weekday - 2
-    }
-
-    private var hasEnoughDataForStats: Bool {
-        workoutsThisWeek > 0
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // Header
-            HStack {
-                Text("This Week")
-                    .font(AppTypography.sectionHeader)
-                    .foregroundStyle(AppColors.textPrimary)
+                // Icon
+                Image(systemName: "moon.zzz.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(AppColors.olive)
 
                 Spacer()
 
-                if hasEnoughDataForStats {
-                    Text("View all")
-                        .font(AppTypography.chipText)
-                        .foregroundStyle(AppColors.navy)
-                }
-            }
+                // Value
+                HStack(alignment: .lastTextBaseline, spacing: 2) {
+                    Text(display)
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppColors.textPrimary)
 
-            if hasEnoughDataForStats {
-                // Stats row - only show real data
-                HStack(spacing: 0) {
-                    WeeklyStatItem(
-                        value: "\(workoutsThisWeek)",
-                        label: "Workouts",
-                        icon: "figure.run",
-                        color: AppColors.navy
-                    )
-
-                    Divider()
-                        .frame(height: 36)
-                        .padding(.horizontal, 12)
-
-                    WeeklyStatItem(
-                        value: currentStreak > 0 ? "\(currentStreak)" : "—",
-                        label: "Day streak",
-                        icon: "flame.fill",
-                        color: currentStreak > 0 ? AppColors.orange : AppColors.textTertiary
-                    )
-                }
-
-                // Activity bar - real data
-                HStack(spacing: 4) {
-                    ForEach(0..<7, id: \.self) { day in
-                        let hasWorkout = workoutDaysThisWeek.contains(day)
-                        let isToday = day == todayIndex
-
-                        VStack(spacing: 4) {
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(hasWorkout ? AppColors.navy : AppColors.divider)
-                                .frame(height: hasWorkout ? 24 : 12)
-
-                            Text(dayLabel(for: day))
-                                .font(.system(size: 10, weight: isToday ? .bold : .medium))
-                                .foregroundStyle(isToday ? AppColors.navy : AppColors.textTertiary)
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                }
-            } else {
-                // Empty state
-                VStack(spacing: AppSpacing.sm) {
-                    Text("No workouts this week yet")
-                        .font(AppTypography.bodyMedium)
-                        .foregroundStyle(AppColors.textSecondary)
-
-                    Text("Log your first workout to start tracking")
-                        .font(AppTypography.caption)
+                    Text("h")
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(AppColors.textTertiary)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, AppSpacing.md)
-            }
-        }
-        .standardCardWithMargin()
-    }
 
-    private func dayLabel(for index: Int) -> String {
-        let days = ["M", "T", "W", "T", "F", "S", "S"]
-        return days[index]
+                Text(quality)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(AppColors.olive)
+
+                // Progress
+                AnimatedProgressBar(
+                    progress: progress,
+                    color: AppColors.olive,
+                    animate: animate
+                )
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(
+                    colors: [Color.white, AppColors.olive.opacity(0.03)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+        }
+        .buttonStyle(BoldCardButtonStyle())
     }
 }
 
-struct WeeklyStatItem: View {
-    let value: String
-    let label: String
-    let icon: String
-    let color: Color
+private struct HydrationCard: View {
+    let liters: Double
+    let animate: Bool
+    let onTap: () -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(color)
+    private let goal = 3.0
 
-                Text(value)
-                    .font(AppTypography.statValue)
-                    .foregroundStyle(AppColors.textPrimary)
-            }
-
-            Text(label)
-                .font(AppTypography.miniLabel)
-                .foregroundStyle(AppColors.textTertiary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-// MARK: - 5. Recovery Insight Card (Honest Data)
-
-struct RecoveryInsightCard: View {
-    let recovery: NextDayRecovery
-    var dailyContext: DailyContext?  // Pass context to avoid persistence calls during body
-
-    // Check if we have real physiological data (no persistence calls during body evaluation!)
-    private var hasRealRecoveryData: Bool {
-        guard let context = dailyContext else { return false }
-        return context.hrvScore != nil || context.sleepHours > 0
+    private var display: String {
+        guard liters > 0 else { return "—" }
+        return String(format: "%.1f", liters)
     }
 
-    private var insight: String {
-        if !hasRealRecoveryData {
-            return "Log more workouts and connect Apple Health for recovery insights."
-        }
-
-        if recovery.overallScore >= 80 {
-            return "Your recovery looks good based on available data."
-        } else if recovery.overallScore >= 60 {
-            return "Moderate recovery. Consider how you feel before intense sessions."
-        } else {
-            return "Recovery appears low. Focus on rest if possible."
-        }
-    }
-
-    private var iconColor: Color {
-        if !hasRealRecoveryData {
-            return AppColors.textTertiary
-        }
-        return recovery.overallScore >= 60 ? AppColors.olive : AppColors.coral
+    private var progress: Double {
+        guard liters > 0 else { return 0 }
+        return min(liters / goal, 1.0)
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(iconColor.opacity(0.12))
-                    .frame(width: AppSpacing.Icon.circleMedium, height: AppSpacing.Icon.circleMedium)
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                // Icon with blue tint background
+                ZStack {
+                    Circle()
+                        .fill(AppColors.waterAccent.opacity(0.15))
+                        .frame(width: 36, height: 36)
 
-                Image(systemName: hasRealRecoveryData ? "leaf.fill" : "questionmark")
-                    .font(.system(size: AppSpacing.Icon.medium, weight: .medium))
-                    .foregroundStyle(iconColor)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Recovery Insight")
-                    .font(AppTypography.statLabel)
-                    .foregroundStyle(AppColors.textTertiary)
-
-                Text(insight)
-                    .font(AppTypography.cardSubtitle)
-                    .foregroundStyle(AppColors.textPrimary)
-                    .lineLimit(2)
-            }
-
-            Spacer()
-        }
-        .standardCardWithMargin()
-    }
-}
-
-// MARK: - 6. Trend Preview Card (Honest Data)
-
-struct TrendPreviewCard: View {
-    var hrvScore: Double? = nil
-
-    private var hasRealHRVData: Bool {
-        hrvScore != nil
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("HRV Trend")
-                    .font(AppTypography.sectionHeader)
-                    .foregroundStyle(AppColors.textPrimary)
-
-                Spacer()
-
-                if hasRealHRVData {
-                    HStack(spacing: 4) {
-                        Text("View trends")
-                            .font(AppTypography.chipText)
-                            .foregroundStyle(AppColors.navy)
-
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(AppColors.navy)
-                    }
+                    Image(systemName: "drop.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(AppColors.waterAccent)
                 }
-            }
 
-            if let hrv = hrvScore {
-                // Real HRV data display
-                HStack(spacing: AppSpacing.md) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(String(format: "%.0f", hrv))
-                            .font(AppTypography.statValue)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("HYDRATION")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.5)
+                        .foregroundStyle(AppColors.textTertiary)
+
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text(display)
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
                             .foregroundStyle(AppColors.textPrimary)
 
-                        Text("ms today")
-                            .font(AppTypography.caption)
+                        Text("L")
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(AppColors.textTertiary)
-                    }
-
-                    Spacer()
-
-                    // Simple status indicator
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(hrv >= 50 ? AppColors.olive : hrv >= 30 ? AppColors.orange : AppColors.coral)
-                            .frame(width: 8, height: 8)
-
-                        Text(hrv >= 50 ? "Good recovery" : hrv >= 30 ? "Moderate" : "Low")
-                            .font(AppTypography.caption)
-                            .foregroundStyle(AppColors.textSecondary)
                     }
                 }
-            } else {
-                // No HRV data - honest empty state
-                VStack(spacing: AppSpacing.sm) {
-                    HStack(spacing: AppSpacing.sm) {
-                        Image(systemName: "waveform.path.ecg")
-                            .font(.system(size: 20, weight: .medium))
+
+                Spacer()
+
+                // Circular progress
+                ZStack {
+                    Circle()
+                        .stroke(AppColors.divider, lineWidth: 4)
+                        .frame(width: 40, height: 40)
+
+                    Circle()
+                        .trim(from: 0, to: animate ? progress : 0)
+                        .stroke(AppColors.waterAccent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .frame(width: 40, height: 40)
+                        .rotationEffect(.degrees(-90))
+                        .animation(.easeOut(duration: 1.0), value: animate)
+
+                    Text("\(Int(progress * 100))")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(AppColors.waterAccent)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+        }
+        .buttonStyle(BoldCardButtonStyle())
+    }
+}
+
+private struct WeightCard: View {
+    let currentWeight: Double?
+    let weeklyDelta: Double?
+    let onTap: () -> Void
+
+    private var deltaDisplay: String {
+        guard let delta = weeklyDelta, delta != 0 else { return "" }
+        let sign = delta > 0 ? "+" : ""
+        return "\(sign)\(String(format: "%.1f", delta))"
+    }
+
+    private var weightDisplay: String {
+        guard let w = currentWeight, w > 0 else { return "—" }
+        return String(format: "%.1f", w)
+    }
+
+    private var trendColor: Color {
+        guard let delta = weeklyDelta else { return AppColors.textTertiary }
+        return delta <= 0 ? AppColors.olive : AppColors.coral
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("WEIGHT")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.5)
+                        .foregroundStyle(AppColors.textTertiary)
+
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text(weightDisplay)
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppColors.textPrimary)
+
+                        Text("kg")
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(AppColors.textTertiary)
+                    }
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("No HRV data yet")
-                                .font(AppTypography.bodyMedium)
-                                .foregroundStyle(AppColors.textSecondary)
+                    if !deltaDisplay.isEmpty {
+                        Text(deltaDisplay)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(trendColor)
+                    }
+                }
 
-                            Text("Connect Apple Watch for HRV insights")
-                                .font(AppTypography.caption)
+                Spacer()
+
+                // Mini sparkline placeholder
+                MiniSparkline(trend: weeklyDelta ?? 0)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+        }
+        .buttonStyle(BoldCardButtonStyle())
+    }
+}
+
+private struct ReadinessCard: View {
+    let score: Int?
+    let animate: Bool
+    let onTap: () -> Void
+
+    private var display: String {
+        guard let s = score, s > 0 else { return "—" }
+        return "\(s)"
+    }
+
+    private var progress: Double {
+        guard let s = score, s > 0 else { return 0 }
+        return Double(s) / 100.0
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("READINESS")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.5)
+                        .foregroundStyle(AppColors.textTertiary)
+
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text(display)
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppColors.textPrimary)
+
+                        if score != nil {
+                            Text("%")
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(AppColors.textTertiary)
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, AppSpacing.xs)
+
+                Spacer()
+
+                // Circular progress
+                ZStack {
+                    Circle()
+                        .stroke(AppColors.divider, lineWidth: 4)
+                        .frame(width: 40, height: 40)
+
+                    Circle()
+                        .trim(from: 0, to: animate ? progress : 0)
+                        .stroke(AppColors.olive, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .frame(width: 40, height: 40)
+                        .rotationEffect(.degrees(-90))
+                        .animation(.easeOut(duration: 1.0), value: animate)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+        }
+        .buttonStyle(BoldCardButtonStyle())
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MARK: - PART 4: ANIMATED PROGRESS BAR
+// ═══════════════════════════════════════════════════════════════════════════════
+
+private struct AnimatedProgressBar: View {
+    let progress: Double
+    let color: Color
+    let animate: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                // Track
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(AppColors.divider)
+                    .frame(height: 6)
+
+                // Fill with gradient
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(
+                        LinearGradient(
+                            colors: [color, color.opacity(0.7)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: geo.size.width * (animate ? progress : 0), height: 6)
+                    .animation(.easeOut(duration: 1.0), value: animate)
             }
         }
-        .standardCardWithMargin()
+        .frame(height: 6)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MARK: - MINI SPARKLINE (Weight Card)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+private struct MiniSparkline: View {
+    let trend: Double
+
+    var body: some View {
+        // Simple trend indicator
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(AppColors.divider.opacity(0.5))
+                .frame(width: 50, height: 30)
+
+            // Trend line
+            Path { path in
+                let startY: CGFloat = trend >= 0 ? 10 : 20
+                let endY: CGFloat = trend >= 0 ? 20 : 10
+                path.move(to: CGPoint(x: 8, y: startY))
+                path.addCurve(
+                    to: CGPoint(x: 42, y: endY),
+                    control1: CGPoint(x: 20, y: startY),
+                    control2: CGPoint(x: 30, y: endY)
+                )
+            }
+            .stroke(
+                trend <= 0 ? AppColors.olive : AppColors.coral,
+                style: StrokeStyle(lineWidth: 2, lineCap: .round)
+            )
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MARK: - PART 6: WEEKLY TRACKER (Upgraded)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+private struct WeeklyTracker: View {
+    let workoutsThisWeek: Int
+    let animate: Bool
+
+    private let days = ["M", "T", "W", "T", "F", "S", "S"]
+
+    private var currentDayIndex: Int {
+        let weekday = Calendar.current.component(.weekday, from: Date())
+        return (weekday + 5) % 7
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            // Header
+            HStack {
+                Text("THIS WEEK")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(0.8)
+                    .foregroundStyle(AppColors.textTertiary)
+
+                Spacer()
+
+                Text("\(workoutsThisWeek) of 5")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AppColors.textSecondary)
+            }
+
+            // Days row
+            HStack(spacing: 0) {
+                ForEach(0..<7, id: \.self) { index in
+                    let completed = index < workoutsThisWeek
+                    let isToday = index == currentDayIndex
+
+                    VStack(spacing: 6) {
+                        // Day label
+                        Text(days[index])
+                            .font(.system(size: 11, weight: isToday ? .bold : .medium))
+                            .foregroundStyle(isToday ? AppColors.navy : AppColors.textTertiary)
+
+                        // Dot with animation
+                        ZStack {
+                            // Completed fill
+                            Circle()
+                                .fill(completed ? AppColors.burntOrange : AppColors.divider)
+                                .frame(width: 10, height: 10)
+                                .scaleEffect(animate && completed ? 1 : 0.5)
+                                .animation(.spring(response: 0.4, dampingFraction: 0.6).delay(Double(index) * 0.08), value: animate)
+
+                            // Today ring
+                            if isToday {
+                                Circle()
+                                    .stroke(AppColors.navy, lineWidth: 2)
+                                    .frame(width: 20, height: 20)
+                            }
+                        }
+                        .frame(height: 22)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .padding(14)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 2)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MARK: - PART 5: PRIMARY CTA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+private struct PrimaryCTA: View {
+    let onLogWorkout: () -> Void
+    let onLogDaily: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            // Primary: Log Workout (Bold orange)
+            Button(action: onLogWorkout) {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 13, weight: .bold))
+
+                    Text("Log Workout")
+                        .font(.system(size: 14, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    LinearGradient(
+                        colors: [AppColors.burntOrange, AppColors.burntOrange.opacity(0.9)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .shadow(color: AppColors.burntOrange.opacity(0.3), radius: 8, y: 4)
+            }
+
+            // Secondary: Daily Log
+            Button(action: onLogDaily) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(AppColors.navy)
+                    .frame(width: 48, height: 48)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MARK: - BUTTON STYLE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+private struct BoldCardButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 

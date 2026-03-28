@@ -225,6 +225,17 @@ final class PersistedDailyContext {
     var hrvScore: Double?
     var readinessScore: Int
 
+    // Nutrition fields (added for daily context sync)
+    var waterIntakeMl: Int?
+    var calories: Int?
+    var proteinGrams: Int?
+    var carbsGrams: Int?
+    var fatGrams: Int?
+
+    // Weight fields (only tracked if goal == weight_loss)
+    var weightKg: Double?
+    var bodyFatPercentage: Double?
+
     // Metadata
     var createdAt: Date
     var updatedAt: Date
@@ -238,7 +249,14 @@ final class PersistedDailyContext {
         energyLevel: String,
         restingHeartRate: Int? = nil,
         hrvScore: Double? = nil,
-        readinessScore: Int
+        readinessScore: Int,
+        waterIntakeMl: Int? = nil,
+        calories: Int? = nil,
+        proteinGrams: Int? = nil,
+        carbsGrams: Int? = nil,
+        fatGrams: Int? = nil,
+        weightKg: Double? = nil,
+        bodyFatPercentage: Double? = nil
     ) {
         self.contextId = contextId
         self.date = date
@@ -249,6 +267,13 @@ final class PersistedDailyContext {
         self.restingHeartRate = restingHeartRate
         self.hrvScore = hrvScore
         self.readinessScore = readinessScore
+        self.waterIntakeMl = waterIntakeMl
+        self.calories = calories
+        self.proteinGrams = proteinGrams
+        self.carbsGrams = carbsGrams
+        self.fatGrams = fatGrams
+        self.weightKg = weightKg
+        self.bodyFatPercentage = bodyFatPercentage
         self.createdAt = Date()
         self.updatedAt = Date()
     }
@@ -264,13 +289,20 @@ final class PersistedDailyContext {
             energyLevel: context.energyLevel.rawValue,
             restingHeartRate: context.restingHeartRate,
             hrvScore: context.hrvScore,
-            readinessScore: context.readinessScore
+            readinessScore: context.readinessScore,
+            waterIntakeMl: context.waterIntakeMl,
+            calories: context.calories,
+            proteinGrams: context.proteinGrams,
+            carbsGrams: context.carbsGrams,
+            fatGrams: context.fatGrams,
+            weightKg: context.weightKg,
+            bodyFatPercentage: context.bodyFatPercentage
         )
     }
 
     /// Convert to DailyContext struct
     func toDailyContext() -> DailyContext {
-        DailyContext(
+        var context = DailyContext(
             id: contextId,
             date: date,
             sleepHours: sleepHours,
@@ -281,6 +313,14 @@ final class PersistedDailyContext {
             hrvScore: hrvScore,
             readinessScore: readinessScore
         )
+        context.waterIntakeMl = waterIntakeMl
+        context.calories = calories
+        context.proteinGrams = proteinGrams
+        context.carbsGrams = carbsGrams
+        context.fatGrams = fatGrams
+        context.weightKg = weightKg
+        context.bodyFatPercentage = bodyFatPercentage
+        return context
     }
 }
 
