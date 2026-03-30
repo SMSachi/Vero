@@ -4,6 +4,7 @@
 //
 //  Service for aggregating metric-specific data for the Trends detail views.
 //  Fetches real data from PersistenceService and computes stats.
+//  Uses UnitPreferences for metric/imperial formatting.
 //
 
 import Foundation
@@ -17,6 +18,7 @@ final class MetricDataService {
     static let shared = MetricDataService()
 
     private let persistence = PersistenceService.shared
+    private var units: UnitPreferences { UnitPreferences.shared }
 
     private init() {}
 
@@ -28,7 +30,7 @@ final class MetricDataService {
         let contexts = fetchContexts(days: days)
         let waterEntries = contexts.compactMap { ctx -> (date: Date, value: Double)? in
             guard let ml = ctx.waterIntakeMl, ml > 0 else { return nil }
-            return (ctx.date, Double(ml) / 1000.0) // Convert to liters
+            return (ctx.date, Double(ml) / 1000.0) // Always stored in liters
         }.sorted { $0.date < $1.date }
 
         guard !waterEntries.isEmpty else {
@@ -36,11 +38,11 @@ final class MetricDataService {
             return MetricDetailData.empty(for: .hydration)
         }
 
-        let values = waterEntries.map { $0.value }
-        let average = values.reduce(0, +) / Double(values.count)
-        let latest = waterEntries.last?.value ?? 0
+        let values = waterEntries.map { $0.value }  // In liters
+        let averageLiters = values.reduce(0, +) / Double(values.count)
+        let latestLiters = waterEntries.last?.value ?? 0
         let goalLiters = 2.5
-        let percentOfGoal = (average / goalLiters) * 100
+        let percentOfGoal = (averageLiters / goalLiters) * 100
 
         // Calculate change (compare first half vs second half)
         let change = calculateChange(values: values)
@@ -49,31 +51,36 @@ final class MetricDataService {
         let maxVal = values.max() ?? 1
         let chartData = values.map { CGFloat($0 / maxVal) }
 
-        // Generate insight
+        // Format for display using unit preferences
+        let displayAverage = units.formatVolume(averageLiters)
+        let displayLatest = units.formatVolume(latestLiters)
+        let displayGoal = units.dailyHydrationGoalFormatted
+
+        // Generate insight (use liters for logic, show in user units)
         let insight: String
-        if average >= 2.5 {
-            insight = "Excellent hydration! Averaging \(String(format: "%.1f", average))L daily supports optimal recovery and performance."
-        } else if average >= 2.0 {
-            insight = "Good hydration at \(String(format: "%.1f", average))L daily. Try adding one more glass to reach optimal levels."
-        } else if average >= 1.5 {
-            insight = "Hydration could improve. At \(String(format: "%.1f", average))L daily, consider setting reminders to drink more water."
+        if averageLiters >= 2.5 {
+            insight = "Excellent hydration! Averaging \(displayAverage) daily supports optimal recovery and performance."
+        } else if averageLiters >= 2.0 {
+            insight = "Good hydration at \(displayAverage) daily. Try adding one more glass to reach optimal levels."
+        } else if averageLiters >= 1.5 {
+            insight = "Hydration could improve. At \(displayAverage) daily, consider setting reminders to drink more water."
         } else {
-            insight = "Low hydration detected. Aim for 2-2.5L daily for better energy and recovery."
+            insight = "Low hydration detected. Aim for \(displayGoal) daily for better energy and recovery."
         }
 
-        print("📊 MetricDataService: Hydration - avg=\(String(format: "%.1f", average))L, entries=\(waterEntries.count)")
+        print("📊 MetricDataService: Hydration - avg=\(displayAverage), entries=\(waterEntries.count)")
 
         return MetricDetailData(
             metricType: .hydration,
-            currentValue: String(format: "%.1f L", latest),
-            averageValue: String(format: "%.1f L", average),
+            currentValue: displayLatest,
+            averageValue: displayAverage,
             change: change,
             changeLabel: change >= 0 ? "+\(String(format: "%.0f", abs(change)))%" : "\(String(format: "%.0f", change))%",
             isPositiveChange: change >= 0,
             chartData: chartData,
             chartLabels: generateDateLabels(for: waterEntries.map { $0.date }),
             percentOfGoal: percentOfGoal,
-            goalLabel: "Goal: \(String(format: "%.1f", goalLiters))L",
+            goalLabel: "Goal: \(displayGoal)",
             insight: insight,
             entryCount: waterEntries.count,
             dateRange: dateRangeLabel(days: days)

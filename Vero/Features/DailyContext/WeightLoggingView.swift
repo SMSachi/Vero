@@ -2,42 +2,31 @@
 //  WeightLoggingView.swift
 //  Insio Health
 //
-//  Dedicated weight logging screen with slider input and unit conversion.
-//  Supports both metric (kg) and imperial (lb) units.
+//  Dedicated weight logging screen with slider input.
+//  Uses UnitPreferences for metric/imperial display.
+//  Internal storage is always in kg.
 //
 
 import SwiftUI
 
 struct WeightLoggingView: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("useMetricUnits") private var useMetricUnits = true
+    @ObservedObject private var units = UnitPreferences.shared
 
     /// Callback when weight is saved
     var onSave: (() -> Void)?
 
-    // State - stored in kg internally
-    @State private var weightKg: Double = 70.0
+    // State - display value in current unit system
+    @State private var displayWeight: Double = 70.0
     @State private var isSaving = false
     @State private var showSuccess = false
 
     private let persistenceService = PersistenceService.shared
     private let syncService = SupabaseSyncService.shared
 
-    // Unit conversion
-    private let kgToLb: Double = 2.20462
-    private let lbToKg: Double = 0.453592
-
-    // Slider ranges
-    private var minWeight: Double { useMetricUnits ? 40.0 : 88.0 }
-    private var maxWeight: Double { useMetricUnits ? 150.0 : 330.0 }
-    private var sliderStep: Double { useMetricUnits ? 0.1 : 0.5 }
-
-    private var displayWeight: Double {
-        useMetricUnits ? weightKg : weightKg * kgToLb
-    }
-
-    private var unitLabel: String {
-        useMetricUnits ? "kg" : "lb"
+    // Computed kg value for storage
+    private var weightKg: Double {
+        units.weightToKg(displayWeight)
     }
 
     var body: some View {
@@ -56,7 +45,7 @@ struct WeightLoggingView: View {
 
                 VStack(spacing: 0) {
                     // Weight display
-                    weightDisplay
+                    weightDisplayView
                         .padding(.top, 40)
 
                     Spacer()
@@ -101,7 +90,7 @@ struct WeightLoggingView: View {
 
     // MARK: - Weight Display
 
-    private var weightDisplay: some View {
+    private var weightDisplayView: some View {
         VStack(spacing: 12) {
             // Large weight number
             HStack(alignment: .lastTextBaseline, spacing: 4) {
@@ -111,14 +100,14 @@ struct WeightLoggingView: View {
                     .contentTransition(.numericText())
                     .animation(.spring(response: 0.3), value: displayWeight)
 
-                Text(unitLabel)
+                Text(units.weightUnit)
                     .font(.system(size: 28, weight: .medium))
                     .foregroundStyle(AppColors.textSecondary)
             }
 
-            // Conversion hint
-            Text(useMetricUnits
-                ? String(format: "%.1f lb", weightKg * kgToLb)
+            // Conversion hint (show opposite unit)
+            Text(units.isMetric
+                ? String(format: "%.1f lb", weightKg * UnitPreferences.kgToLb)
                 : String(format: "%.1f kg", weightKg))
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(AppColors.textTertiary)
@@ -135,16 +124,12 @@ struct WeightLoggingView: View {
                 .foregroundStyle(AppColors.textTertiary)
 
             HStack(spacing: 0) {
-                unitButton("kg", isSelected: useMetricUnits) {
-                    withAnimation(.spring(response: 0.3)) {
-                        useMetricUnits = true
-                    }
+                unitButton("kg", isSelected: units.isMetric) {
+                    switchToMetric()
                 }
 
-                unitButton("lb", isSelected: !useMetricUnits) {
-                    withAnimation(.spring(response: 0.3)) {
-                        useMetricUnits = false
-                    }
+                unitButton("lb", isSelected: units.isImperial) {
+                    switchToImperial()
                 }
             }
             .background(AppColors.divider)
@@ -163,30 +148,41 @@ struct WeightLoggingView: View {
         }
     }
 
+    private func switchToMetric() {
+        guard units.isImperial else { return }
+        // Convert current display value to kg before switching
+        let kg = units.weightToKg(displayWeight)
+        withAnimation(.spring(response: 0.3)) {
+            units.setUnitSystem(.metric)
+            displayWeight = kg  // Now in kg
+        }
+    }
+
+    private func switchToImperial() {
+        guard units.isMetric else { return }
+        // Convert current display value to lb before switching
+        let kg = displayWeight  // Currently in kg
+        withAnimation(.spring(response: 0.3)) {
+            units.setUnitSystem(.imperial)
+            displayWeight = kg * UnitPreferences.kgToLb  // Now in lb
+        }
+    }
+
     // MARK: - Slider Section
 
     private var sliderSection: some View {
         VStack(spacing: 12) {
             Slider(
-                value: Binding(
-                    get: { displayWeight },
-                    set: { newValue in
-                        if useMetricUnits {
-                            weightKg = newValue
-                        } else {
-                            weightKg = newValue * lbToKg
-                        }
-                    }
-                ),
-                in: minWeight...maxWeight,
-                step: sliderStep
+                value: $displayWeight,
+                in: units.weightSliderRange,
+                step: units.weightSliderStep
             )
             .tint(AppColors.navy)
 
             HStack {
-                Text(String(format: "%.0f %@", minWeight, unitLabel))
+                Text(String(format: "%.0f %@", units.weightSliderRange.lowerBound, units.weightUnit))
                 Spacer()
-                Text(String(format: "%.0f %@", maxWeight, unitLabel))
+                Text(String(format: "%.0f %@", units.weightSliderRange.upperBound, units.weightUnit))
             }
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(AppColors.textTertiary)
@@ -207,10 +203,14 @@ struct WeightLoggingView: View {
                 .foregroundStyle(AppColors.textTertiary)
 
             HStack(spacing: 12) {
-                adjustButton("-1.0", delta: useMetricUnits ? -1.0 : -2.2)
-                adjustButton("-0.5", delta: useMetricUnits ? -0.5 : -1.1)
-                adjustButton("+0.5", delta: useMetricUnits ? 0.5 : 1.1)
-                adjustButton("+1.0", delta: useMetricUnits ? 1.0 : 2.2)
+                // Amounts in display units
+                let smallStep = units.isMetric ? 0.5 : 1.0
+                let largeStep = units.isMetric ? 1.0 : 2.0
+
+                adjustButton(String(format: "-%.1f", largeStep), delta: -largeStep)
+                adjustButton(String(format: "-%.1f", smallStep), delta: -smallStep)
+                adjustButton(String(format: "+%.1f", smallStep), delta: smallStep)
+                adjustButton(String(format: "+%.1f", largeStep), delta: largeStep)
             }
         }
     }
@@ -218,11 +218,9 @@ struct WeightLoggingView: View {
     private func adjustButton(_ label: String, delta: Double) -> some View {
         Button {
             withAnimation(.spring(response: 0.3)) {
-                if useMetricUnits {
-                    weightKg = max(40, min(150, weightKg + delta))
-                } else {
-                    weightKg = max(40, min(150, weightKg + delta * lbToKg))
-                }
+                let newValue = displayWeight + delta
+                displayWeight = max(units.weightSliderRange.lowerBound,
+                                   min(units.weightSliderRange.upperBound, newValue))
             }
         } label: {
             Text(label)
@@ -261,14 +259,21 @@ struct WeightLoggingView: View {
     // MARK: - Actions
 
     private func loadExistingWeight() {
+        var loadedKg: Double?
+
         if let context = persistenceService.fetchTodayDailyContext(),
            let weight = context.weightKg, weight > 0 {
-            weightKg = weight
+            loadedKg = weight
+        } else if let lastWeight = persistenceService.fetchLastRecordedWeight() {
+            loadedKg = lastWeight
+        }
+
+        if let kg = loadedKg {
+            // Convert to display units
+            displayWeight = units.displayWeight(kg)
         } else {
-            // Try to load last recorded weight
-            if let lastWeight = persistenceService.fetchLastRecordedWeight() {
-                weightKg = lastWeight
-            }
+            // Default based on unit system
+            displayWeight = units.isMetric ? 70.0 : 154.0
         }
     }
 
@@ -293,16 +298,16 @@ struct WeightLoggingView: View {
             )
         }
 
-        // Update weight (always stored in kg)
-        context.weightKg = weightKg
+        // Always store in kg
+        let kgToSave = weightKg
+        context.weightKg = kgToSave
 
-        // Save locally
-        print("⚖️ WeightLoggingView: Saving \(weightKg)kg...")
+        print("⚖️ WeightLoggingView: Saving \(kgToSave)kg (display: \(displayWeight) \(units.weightUnit))")
         persistenceService.saveDailyContext(context)
         print("⚖️ WeightLoggingView: ✅ Local save complete")
 
         // BROADCAST: Unified data pipeline
-        DataBroadcaster.shared.weightSaved(kg: weightKg)
+        DataBroadcaster.shared.weightSaved(kg: kgToSave)
         DataBroadcaster.shared.dailyContextSaved()
         print("⚖️ WeightLoggingView: ✅ Broadcast sent")
 
@@ -317,10 +322,8 @@ struct WeightLoggingView: View {
             showSuccess = true
         }
 
-        // Call onSave callback
         onSave?()
 
-        // Dismiss after delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             dismiss()
         }

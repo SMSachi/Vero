@@ -61,7 +61,7 @@ struct HomeDashboardView: View {
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 14) {
+                VStack(spacing: 12) {
 
                     // ═══════════════════════════════════════════════════
                     // GREETING HEADER
@@ -98,9 +98,9 @@ struct HomeDashboardView: View {
                     // ═══════════════════════════════════════════════════
                     // PART 2: ASYMMETRICAL GRID
                     // ═══════════════════════════════════════════════════
-                    VStack(spacing: 10) {
+                    VStack(spacing: 8) {
                         // Row 1: Workouts (LARGER) + Sleep
-                        HStack(spacing: 10) {
+                        HStack(spacing: 8) {
                             WorkoutsCard(
                                 count: viewModel.workoutsThisWeek,
                                 streak: viewModel.currentStreak,
@@ -119,7 +119,7 @@ struct HomeDashboardView: View {
                         }
 
                         // Row 2: Hydration + Weight (smaller)
-                        HStack(spacing: 10) {
+                        HStack(spacing: 8) {
                             HydrationCard(
                                 liters: viewModel.waterIntake,
                                 animate: animateProgress,
@@ -162,11 +162,12 @@ struct HomeDashboardView: View {
                     )
                     .padding(.horizontal, 20)
 
-                    Spacer().frame(height: 20)
+                    Spacer().frame(height: 12)
                 }
-                .padding(.top, 12)
+                .padding(.top, 20)
             }
-            .background(AppColors.background.ignoresSafeArea())
+            .scrollContentBackground(.hidden)
+            .background(AppColors.background)
             .navigationBarHidden(true)
             .navigationDestination(isPresented: $navigateToWorkoutInsight) {
                 if let workout = viewModel.latestWorkout {
@@ -177,6 +178,7 @@ struct HomeDashboardView: View {
                 }
             }
         }
+        .background(AppColors.background.ignoresSafeArea(.all))
         .task {
             await viewModel.loadData()
         }
@@ -510,20 +512,27 @@ private struct SleepCard: View {
 }
 
 private struct HydrationCard: View {
-    let liters: Double
+    let liters: Double  // Always stored in liters
     let animate: Bool
     let onTap: () -> Void
+    @ObservedObject private var units = UnitPreferences.shared
 
-    private let goal = 3.0
+    private var goal: Double {
+        units.isMetric ? 2.5 : 85.0  // 2.5L or 85oz
+    }
+
+    private var displayValue: Double {
+        units.displayVolume(liters)
+    }
 
     private var display: String {
         guard liters > 0 else { return "—" }
-        return String(format: "%.1f", liters)
+        return units.formatVolumeValue(liters)
     }
 
     private var progress: Double {
         guard liters > 0 else { return 0 }
-        return min(liters / goal, 1.0)
+        return min(displayValue / goal, 1.0)
     }
 
     var body: some View {
@@ -551,7 +560,7 @@ private struct HydrationCard: View {
                             .font(.system(size: 22, weight: .bold, design: .rounded))
                             .foregroundStyle(AppColors.textPrimary)
 
-                        Text("L")
+                        Text(units.volumeUnit)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(AppColors.textTertiary)
                     }
@@ -588,19 +597,21 @@ private struct HydrationCard: View {
 }
 
 private struct WeightCard: View {
-    let currentWeight: Double?
-    let weeklyDelta: Double?
+    let currentWeight: Double?  // Always stored in kg
+    let weeklyDelta: Double?    // Always stored in kg
     let onTap: () -> Void
+    @ObservedObject private var units = UnitPreferences.shared
 
     private var deltaDisplay: String {
         guard let delta = weeklyDelta, delta != 0 else { return "" }
-        let sign = delta > 0 ? "+" : ""
-        return "\(sign)\(String(format: "%.1f", delta))"
+        let displayDelta = units.displayWeight(abs(delta))
+        let sign = delta > 0 ? "+" : "-"
+        return "\(sign)\(String(format: "%.1f", displayDelta))"
     }
 
     private var weightDisplay: String {
         guard let w = currentWeight, w > 0 else { return "—" }
-        return String(format: "%.1f", w)
+        return units.formatWeightValue(w)
     }
 
     private var trendColor: Color {
@@ -622,7 +633,7 @@ private struct WeightCard: View {
                             .font(.system(size: 22, weight: .bold, design: .rounded))
                             .foregroundStyle(AppColors.textPrimary)
 
-                        Text("kg")
+                        Text(units.weightUnit)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(AppColors.textTertiary)
                     }
@@ -860,7 +871,7 @@ private struct PrimaryCTA: View {
     let onLogDaily: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             // Primary: Log Workout (Bold orange)
             Button(action: onLogWorkout) {
                 HStack(spacing: 6) {

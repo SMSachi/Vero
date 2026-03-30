@@ -3,19 +3,21 @@
 //  Insio Health
 //
 //  Dedicated water logging screen with visual feedback.
-//  More immersive experience than the generic daily log.
+//  Uses UnitPreferences for metric/imperial display.
+//  Internal storage is always in liters.
 //
 
 import SwiftUI
 
 struct WaterLoggingView: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var units = UnitPreferences.shared
 
     /// Callback when water is saved - used to refresh parent views
     var onSave: (() -> Void)?
 
-    // State
-    @State private var waterLiters: Double = 0
+    // State - internal value is always in display units for slider
+    @State private var displayValue: Double = 0
     @State private var isSaving = false
     @State private var showSuccess = false
     @State private var animateWave = false
@@ -23,11 +25,13 @@ struct WaterLoggingView: View {
     private let persistenceService = PersistenceService.shared
     private let syncService = SupabaseSyncService.shared
 
-    // Goal of 3L daily
-    private let dailyGoal: Double = 3.0
+    // Computed liters value for storage
+    private var waterLiters: Double {
+        units.volumeToLiters(displayValue)
+    }
 
     private var progress: Double {
-        min(waterLiters / dailyGoal, 1.0)
+        min(displayValue / units.dailyHydrationGoal, 1.0)
     }
 
     var body: some View {
@@ -79,10 +83,7 @@ struct WaterLoggingView: View {
             }
         }
         .onAppear {
-            // Load existing water intake for today
             loadExistingIntake()
-
-            // Start wave animation
             withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
                 animateWave = true
             }
@@ -111,7 +112,7 @@ struct WaterLoggingView: View {
                 )
                 .frame(width: 220, height: 220)
                 .rotationEffect(.degrees(-90))
-                .animation(.easeOut(duration: 0.5), value: waterLiters)
+                .animation(.easeOut(duration: 0.5), value: displayValue)
 
             // Inner content
             VStack(spacing: 8) {
@@ -123,13 +124,13 @@ struct WaterLoggingView: View {
 
                 // Value
                 HStack(alignment: .lastTextBaseline, spacing: 4) {
-                    Text(String(format: "%.1f", waterLiters))
+                    Text(String(format: units.isMetric ? "%.1f" : "%.0f", displayValue))
                         .font(.system(size: 48, weight: .bold, design: .rounded))
                         .foregroundStyle(AppColors.textPrimary)
                         .contentTransition(.numericText())
-                        .animation(.spring(response: 0.3), value: waterLiters)
+                        .animation(.spring(response: 0.3), value: displayValue)
 
-                    Text("L")
+                    Text(units.volumeUnit)
                         .font(.system(size: 24, weight: .medium))
                         .foregroundStyle(AppColors.textSecondary)
                 }
@@ -152,9 +153,9 @@ struct WaterLoggingView: View {
                 .foregroundStyle(AppColors.textTertiary)
 
             HStack(spacing: 12) {
-                quickAddButton(label: "+1 Glass", amount: 0.25)
-                quickAddButton(label: "+1 Bottle", amount: 0.5)
-                quickAddButton(label: "+1 Liter", amount: 1.0)
+                ForEach(units.volumeQuickAddAmounts, id: \.label) { item in
+                    quickAddButton(label: item.label, amount: item.displayValue)
+                }
             }
         }
     }
@@ -162,15 +163,15 @@ struct WaterLoggingView: View {
     private func quickAddButton(label: String, amount: Double) -> some View {
         Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                waterLiters = min(waterLiters + amount, 5.0)
+                displayValue = min(displayValue + amount, units.volumeSliderRange.upperBound)
             }
         } label: {
             VStack(spacing: 6) {
-                Text("+\(amount < 1 ? String(format: "%.2gL", amount) : String(format: "%.0fL", amount))")
+                Text(label)
                     .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundStyle(AppColors.waterAccent)
 
-                Text(label)
+                Text(units.isMetric ? "Add" : "Add")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(AppColors.textSecondary)
             }
@@ -191,15 +192,19 @@ struct WaterLoggingView: View {
                 .foregroundStyle(AppColors.textTertiary)
 
             VStack(spacing: 8) {
-                Slider(value: $waterLiters, in: 0...5, step: 0.25)
-                    .tint(AppColors.waterAccent)
+                Slider(
+                    value: $displayValue,
+                    in: units.volumeSliderRange,
+                    step: units.volumeSliderStep
+                )
+                .tint(AppColors.waterAccent)
 
                 HStack {
-                    Text("0 L")
+                    Text("0 \(units.volumeUnit)")
                     Spacer()
-                    Text("\(String(format: "%.1f", dailyGoal)) L goal")
+                    Text(units.dailyHydrationGoalFormatted + " goal")
                     Spacer()
-                    Text("5 L")
+                    Text(units.isMetric ? "5 L" : "170 oz")
                 }
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(AppColors.textTertiary)
@@ -229,12 +234,12 @@ struct WaterLoggingView: View {
             .padding(.vertical, 18)
             .background(
                 showSuccess ? AppColors.olive :
-                (waterLiters > 0 ? AppColors.waterAccent : AppColors.waterAccent.opacity(0.5))
+                (displayValue > 0 ? AppColors.waterAccent : AppColors.waterAccent.opacity(0.5))
             )
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: AppColors.waterAccent.opacity(0.3), radius: 10, y: 5)
         }
-        .disabled(waterLiters == 0 || isSaving)
+        .disabled(displayValue == 0 || isSaving)
     }
 
     // MARK: - Actions
@@ -242,7 +247,9 @@ struct WaterLoggingView: View {
     private func loadExistingIntake() {
         if let context = persistenceService.fetchTodayDailyContext(),
            let waterMl = context.waterIntakeMl, waterMl > 0 {
-            waterLiters = Double(waterMl) / 1000.0
+            // Convert stored liters to display units
+            let liters = Double(waterMl) / 1000.0
+            displayValue = units.displayVolume(liters)
         }
     }
 
@@ -267,16 +274,16 @@ struct WaterLoggingView: View {
             )
         }
 
-        // Update water intake
-        context.waterIntakeMl = Int(waterLiters * 1000)
+        // Convert to liters for storage
+        let litersToSave = waterLiters
+        context.waterIntakeMl = Int(litersToSave * 1000)
 
-        // Save locally
-        print("💧 WaterLoggingView: Saving \(waterLiters)L...")
+        print("💧 WaterLoggingView: Saving \(litersToSave)L (display: \(displayValue) \(units.volumeUnit))")
         persistenceService.saveDailyContext(context)
         print("💧 WaterLoggingView: ✅ Local save complete")
 
         // BROADCAST: Unified data pipeline
-        DataBroadcaster.shared.hydrationSaved(liters: waterLiters)
+        DataBroadcaster.shared.hydrationSaved(liters: litersToSave)
         DataBroadcaster.shared.dailyContextSaved()
         print("💧 WaterLoggingView: ✅ Broadcast sent")
 
@@ -291,10 +298,8 @@ struct WaterLoggingView: View {
             showSuccess = true
         }
 
-        // Call onSave callback (legacy compatibility)
         onSave?()
 
-        // Dismiss after delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             dismiss()
         }

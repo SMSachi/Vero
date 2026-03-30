@@ -11,18 +11,19 @@ import SwiftUI
 struct DailyContextInputView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var goalService = UserGoalService.shared
+    @ObservedObject private var units = UnitPreferences.shared
 
     /// Callback when save completes - used to refresh parent views
     var onSave: (() -> Void)?
 
-    // Input state
+    // Input state - display values in current unit system
     @State private var sleepHours: Double = 7
     @State private var sleepQuality: SleepQuality = .good
-    @State private var waterLiters: Double = 0
+    @State private var waterDisplayValue: Double = 0  // In display units (L or oz)
     @State private var calories: String = ""
     @State private var protein: String = ""
     @State private var carbs: String = ""
-    @State private var weight: String = ""
+    @State private var weightDisplayValue: String = ""  // In display units (kg or lb)
 
     // UI state
     @State private var isSaving = false
@@ -30,6 +31,16 @@ struct DailyContextInputView: View {
 
     private let persistenceService = PersistenceService.shared
     private let syncService = SupabaseSyncService.shared
+
+    // Computed values for storage (always metric)
+    private var waterLiters: Double {
+        units.volumeToLiters(waterDisplayValue)
+    }
+
+    private var weightKg: Double? {
+        guard let displayValue = Double(weightDisplayValue), displayValue > 0 else { return nil }
+        return units.weightToKg(displayValue)
+    }
 
     var body: some View {
         NavigationStack {
@@ -158,27 +169,30 @@ struct DailyContextInputView: View {
 
             VStack(spacing: AppSpacing.sm) {
                 HStack {
-                    Text(String(format: "%.1f L", waterLiters))
+                    Text(String(format: units.isMetric ? "%.1f %@" : "%.0f %@", waterDisplayValue, units.volumeUnit))
                         .font(AppTypography.headlineMedium)
                         .foregroundStyle(AppColors.textPrimary)
                         .monospacedDigit()
 
                     Spacer()
 
-                    // Quick add buttons
+                    // Quick add buttons (unit-aware)
                     HStack(spacing: AppSpacing.xs) {
-                        quickAddButton("+0.25L", color: AppColors.waterAccent) { waterLiters += 0.25 }
-                        quickAddButton("+0.5L", color: AppColors.waterAccent) { waterLiters += 0.5 }
+                        ForEach(units.volumeQuickAddAmounts.prefix(2), id: \.label) { item in
+                            quickAddButton(item.label, color: AppColors.waterAccent) {
+                                waterDisplayValue += item.displayValue
+                            }
+                        }
                     }
                 }
 
-                Slider(value: $waterLiters, in: 0...5, step: 0.25)
+                Slider(value: $waterDisplayValue, in: units.volumeSliderRange, step: units.volumeSliderStep)
                     .tint(AppColors.waterAccent)
 
                 HStack {
-                    Text("0 L")
+                    Text("0 \(units.volumeUnit)")
                     Spacer()
-                    Text("5 L")
+                    Text(units.isMetric ? "5 L" : "170 oz")
                 }
                 .font(AppTypography.captionSmall)
                 .foregroundStyle(AppColors.textTertiary)
@@ -214,14 +228,14 @@ struct DailyContextInputView: View {
                 .foregroundStyle(AppColors.navy)
 
             HStack {
-                TextField("0.0", text: $weight)
+                TextField("0.0", text: $weightDisplayValue)
                     .keyboardType(.decimalPad)
                     .font(AppTypography.headlineMedium)
                     .foregroundStyle(AppColors.textPrimary)
                     .multilineTextAlignment(.center)
                     .frame(width: 100)
 
-                Text("kg")
+                Text(units.weightUnit)
                     .font(AppTypography.bodyMedium)
                     .foregroundStyle(AppColors.textSecondary)
 
@@ -320,8 +334,9 @@ struct DailyContextInputView: View {
         }
 
         // Set weight (only if goal is weight_loss and value entered)
-        if goalService.shouldShowWeightUI, let weightVal = Double(weight), weightVal > 0 {
-            context.weightKg = weightVal
+        // weightKg computed property already converts from display units
+        if goalService.shouldShowWeightUI, let kg = weightKg, kg > 0 {
+            context.weightKg = kg
         }
 
         // ══════════════════════════════════════════════════════════════════════════
