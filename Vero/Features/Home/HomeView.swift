@@ -149,6 +149,7 @@ struct HomeDashboardView: View {
                     // ═══════════════════════════════════════════════════
                     WeeklyTracker(
                         workoutsThisWeek: viewModel.workoutsThisWeek,
+                        workoutDays: viewModel.workoutDaysThisWeek,
                         animate: animateProgress
                     )
                     .padding(.horizontal, 20)
@@ -466,10 +467,17 @@ private struct SleepCard: View {
     var body: some View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 4) {
-                // Icon
-                Image(systemName: "moon.zzz.fill")
-                    .font(.system(size: 16))
-                    .foregroundStyle(AppColors.olive)
+                // Icon + label row (matches WorkoutsCard hierarchy)
+                HStack(spacing: 4) {
+                    Image(systemName: "moon.zzz.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(AppColors.olive)
+                    Text("SLEEP")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.5)
+                        .foregroundStyle(AppColors.textTertiary)
+                        .lineLimit(1)
+                }
 
                 Spacer()
 
@@ -537,52 +545,59 @@ private struct HydrationCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 12) {
-                // Icon with blue tint background
+            HStack(spacing: 10) {
+                // Icon with blue tint background — compact so label has room
                 ZStack {
                     Circle()
                         .fill(AppColors.waterAccent.opacity(0.15))
-                        .frame(width: 36, height: 36)
+                        .frame(width: 30, height: 30)
 
                     Image(systemName: "drop.fill")
-                        .font(.system(size: 16))
+                        .font(.system(size: 13))
                         .foregroundStyle(AppColors.waterAccent)
                 }
 
+                // Label + value — highest priority, no truncation
                 VStack(alignment: .leading, spacing: 2) {
                     Text("HYDRATION")
                         .font(.system(size: 9, weight: .bold))
-                        .tracking(0.5)
+                        .tracking(0.3)
                         .foregroundStyle(AppColors.textTertiary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
 
                     HStack(alignment: .lastTextBaseline, spacing: 2) {
                         Text(display)
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
                             .foregroundStyle(AppColors.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
 
                         Text(units.volumeUnit)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(AppColors.textTertiary)
+                            .lineLimit(1)
                     }
                 }
+                .layoutPriority(1)
 
-                Spacer()
+                Spacer(minLength: 0)
 
-                // Circular progress
+                // Circular progress — reduced to free up label space
                 ZStack {
                     Circle()
-                        .stroke(AppColors.divider, lineWidth: 4)
-                        .frame(width: 40, height: 40)
+                        .stroke(AppColors.divider, lineWidth: 3)
+                        .frame(width: 34, height: 34)
 
                     Circle()
                         .trim(from: 0, to: animate ? progress : 0)
-                        .stroke(AppColors.waterAccent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                        .frame(width: 40, height: 40)
+                        .stroke(AppColors.waterAccent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .frame(width: 34, height: 34)
                         .rotationEffect(.degrees(-90))
                         .animation(.easeOut(duration: 1.0), value: animate)
 
                     Text("\(Int(progress * 100))")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(AppColors.waterAccent)
                 }
             }
@@ -621,33 +636,44 @@ private struct WeightCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                // Text column — high priority so value never truncates
                 VStack(alignment: .leading, spacing: 2) {
                     Text("WEIGHT")
                         .font(.system(size: 9, weight: .bold))
                         .tracking(0.5)
                         .foregroundStyle(AppColors.textTertiary)
+                        .lineLimit(1)
 
                     HStack(alignment: .lastTextBaseline, spacing: 2) {
                         Text(weightDisplay)
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
                             .foregroundStyle(AppColors.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
 
                         Text(units.weightUnit)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(AppColors.textTertiary)
+                            .lineLimit(1)
                     }
 
                     if !deltaDisplay.isEmpty {
                         Text(deltaDisplay)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(trendColor)
+                            .lineLimit(1)
+                    } else if currentWeight == nil {
+                        Text("Tap to log")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(AppColors.textTertiary)
                     }
                 }
+                .layoutPriority(1)
 
-                Spacer()
+                Spacer(minLength: 0)
 
-                // Mini sparkline placeholder
+                // Mini sparkline — lower priority, shrinks on tight screens
                 MiniSparkline(trend: weeklyDelta ?? 0)
             }
             .padding(14)
@@ -796,6 +822,9 @@ private struct MiniSparkline: View {
 
 private struct WeeklyTracker: View {
     let workoutsThisWeek: Int
+    /// Actual weekday indices (0=Mon…6=Sun) that had workouts this week.
+    /// Drives per-day dot rendering rather than a sequential fill.
+    let workoutDays: Set<Int>
     let animate: Bool
 
     private let days = ["M", "T", "W", "T", "F", "S", "S"]
@@ -821,26 +850,38 @@ private struct WeeklyTracker: View {
                     .foregroundStyle(AppColors.textSecondary)
             }
 
-            // Days row
+            // Days row — dots light up for actual workout days, not sequential
             HStack(spacing: 0) {
                 ForEach(0..<7, id: \.self) { index in
-                    let completed = index < workoutsThisWeek
+                    let completed = workoutDays.contains(index)
                     let isToday = index == currentDayIndex
+                    // Days in the future (beyond today) are dimmed
+                    let isFuture = index > currentDayIndex
+                    let dotColor: Color = completed
+                        ? AppColors.burntOrange
+                        : (isFuture ? AppColors.divider.opacity(0.5) : AppColors.divider)
 
                     VStack(spacing: 6) {
                         // Day label
                         Text(days[index])
                             .font(.system(size: 11, weight: isToday ? .bold : .medium))
-                            .foregroundStyle(isToday ? AppColors.navy : AppColors.textTertiary)
+                            .foregroundStyle(
+                                isToday ? AppColors.navy
+                                    : isFuture ? AppColors.textTertiary.opacity(0.5)
+                                    : AppColors.textTertiary
+                            )
 
                         // Dot with animation
                         ZStack {
-                            // Completed fill
                             Circle()
-                                .fill(completed ? AppColors.burntOrange : AppColors.divider)
+                                .fill(dotColor)
                                 .frame(width: 10, height: 10)
-                                .scaleEffect(animate && completed ? 1 : 0.5)
-                                .animation(.spring(response: 0.4, dampingFraction: 0.6).delay(Double(index) * 0.08), value: animate)
+                                .scaleEffect(animate && completed ? 1.0 : (animate ? 0.7 : 0.5))
+                                .animation(
+                                    .spring(response: 0.4, dampingFraction: 0.6)
+                                    .delay(Double(index) * 0.08),
+                                    value: animate
+                                )
 
                             // Today ring
                             if isToday {
@@ -895,15 +936,19 @@ private struct PrimaryCTA: View {
                 .shadow(color: AppColors.burntOrange.opacity(0.3), radius: 8, y: 4)
             }
 
-            // Secondary: Daily Log
+            // Secondary: Daily Log — labeled so purpose is obvious
             Button(action: onLogDaily) {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(AppColors.navy)
-                    .frame(width: 48, height: 48)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
+                VStack(spacing: 2) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Daily")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundStyle(AppColors.navy)
+                .frame(width: 52, height: 48)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
             }
         }
     }

@@ -86,6 +86,21 @@ final class HomeViewModel: ObservableObject {
         persistenceService.calculateWeeklyWeightDelta()
     }
 
+    /// Set of weekday indices (0=Mon…6=Sun) that had at least one workout this calendar week.
+    /// Used by WeeklyTracker to show actual workout days instead of a sequential fill.
+    var workoutDaysThisWeek: Set<Int> {
+        let calendar = Calendar.current
+        guard let startOfWeek = calendar.date(
+            from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+        ) else { return [] }
+        let endOfWeek = calendar.date(byAdding: .day, value: 7, to: startOfWeek)!
+        let workouts = persistenceService.fetchWorkouts(from: startOfWeek, to: endOfWeek)
+        return Set(workouts.map { workout in
+            let weekday = calendar.component(.weekday, from: workout.startDate)
+            return (weekday + 5) % 7  // 0=Mon, 1=Tue … 6=Sun
+        })
+    }
+
     /// Whether a post-workout check-in has been completed for the latest workout
     var hasCompletedCheckIn: Bool {
         guard let workout = latestWorkout else { return false }
