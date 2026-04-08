@@ -254,6 +254,10 @@ struct WaterLoggingView: View {
     }
 
     private func save() {
+        print("💧 ════════════════════════════════════════════════════")
+        print("💧 WATER LOG START")
+        print("💧 ════════════════════════════════════════════════════")
+
         isSaving = true
 
         // Load or create today's context
@@ -276,20 +280,28 @@ struct WaterLoggingView: View {
 
         // Convert to liters for storage
         let litersToSave = waterLiters
-        context.waterIntakeMl = Int(litersToSave * 1000)
+        let mlToSave = Int(litersToSave * 1000)
+        context.waterIntakeMl = mlToSave
 
-        print("💧 WaterLoggingView: Saving \(litersToSave)L (display: \(displayValue) \(units.volumeUnit))")
+        print("💧 WATER: Value = \(String(format: "%.2f", litersToSave))L (\(mlToSave)ml)")
+
+        // Save to persistence
         persistenceService.saveDailyContext(context)
-        print("💧 WaterLoggingView: ✅ Local save complete")
+        print("💧 LOCAL SAVE SUCCESS")
 
-        // BROADCAST: Unified data pipeline
+        // Broadcast to update Home and Trends
         DataBroadcaster.shared.hydrationSaved(liters: litersToSave)
         DataBroadcaster.shared.dailyContextSaved()
-        print("💧 WaterLoggingView: ✅ Broadcast sent")
 
-        // Sync in background
+        print("💧 ════════════════════════════════════════════════════")
+        print("💧 WATER LOG COMPLETE → Home & Trends will refresh")
+        print("💧 ════════════════════════════════════════════════════")
+
+        // Sync in background with timeout protection
         Task.detached(priority: .utility) { [syncService, context] in
-            await syncService.syncDailyContext(context)
+            print("💧 BACKGROUND CLOUD SYNC START")
+            await syncService.syncDailyContextWithTimeout(context, timeout: 10)
+            print("💧 BACKGROUND CLOUD SYNC COMPLETE")
         }
 
         // Show success

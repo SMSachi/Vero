@@ -51,7 +51,9 @@ final class TrendsViewModel: ObservableObject {
         DataBroadcaster.shared.trendsDataChanged
             .receive(on: DispatchQueue.main)
             .sink { [weak self] event in
-                print("📈 TrendsViewModel: RECEIVED broadcast - \(event.type.rawValue)")
+                print("📊 ════════════════════════════════════════════════════")
+                print("📊 TRENDS: REFRESH TRIGGERED (broadcast: \(event.type.rawValue))")
+                print("📊 ════════════════════════════════════════════════════")
                 Task { [weak self] in
                     await self?.loadTrends()
                 }
@@ -90,9 +92,10 @@ final class TrendsViewModel: ObservableObject {
 
     /// Load trends for the selected timeframe
     func loadTrends() async {
+        print("📊 TRENDS REFRESH START")
         isLoading = true
 
-        // Run analysis
+        // Run analysis - reads from same PersistenceService as Home
         let result = TrendAnalysisEngine.analyze(timeframe: selectedTimeframe.days)
 
         // Update state
@@ -100,6 +103,13 @@ final class TrendsViewModel: ObservableObject {
         hasRealData = result.workoutCount > 0
 
         isLoading = false
+
+        print("📊 ════════════════════════════════════════════════════")
+        print("📊 TRENDS REFRESH COMPLETE")
+        print("📊 Timeframe: \(selectedTimeframe.days) days")
+        print("📊 Workouts: \(result.workoutCount)")
+        print("📊 Metrics: \(result.metricTrends.count)")
+        print("📊 ════════════════════════════════════════════════════")
     }
 
     /// Refresh trends

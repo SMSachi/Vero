@@ -199,14 +199,14 @@ struct AddWorkoutView: View {
     }
 
     private func saveWorkout() {
+        print("🏋️ ════════════════════════════════════════════════════")
+        print("🏋️ WORKOUT SAVE START")
+        print("🏋️ ════════════════════════════════════════════════════")
+
         isSaving = true
 
         let endDate = Date()
         let startDate = endDate.addingTimeInterval(-Double(durationMinutes * 60))
-
-        // NOTE: Calories set to 0 for manual workouts per calorie display rule
-        // Calories are only shown when they come from Apple Health/Watch
-        // or are explicitly entered by the user (not estimated)
 
         // Create workout with proper source tracking
         var workout = Workout(
@@ -223,99 +223,98 @@ struct AddWorkoutView: View {
             isManualEntry: true
         )
 
-        // Mark source as manual (eligible for check-ins)
         workout.source = .manual
 
-        // Set custom type name if "Other"
         if selectedType == .other && !customTypeName.isEmpty {
             workout.customTypeName = customTypeName.trimmingCharacters(in: .whitespaces)
             saveCustomType(customTypeName.trimmingCharacters(in: .whitespaces))
         }
 
-        // Set user feedback from note
         if !note.isEmpty {
             workout.userFeedback = note
         }
 
         // ══════════════════════════════════════════════════════════════
-        // PHASE 1: LOCAL SAVE (synchronous, immediate)
+        // STEP 1: LOCAL SAVE (minimal, synchronous)
         // ══════════════════════════════════════════════════════════════
-        print("📱 AddWorkoutView: ══════════════════════════════════════")
-        print("📱 AddWorkoutView: PHASE 1: LOCAL SAVE")
-        print("📱 AddWorkoutView: Saving workout locally...")
         persistenceService.saveWorkout(workout)
-        print("📱 AddWorkoutView: ✅ Local save complete")
+        print("🏋️ LOCAL WORKOUT SAVE SUCCESS")
 
-        // Generate full analysis (flows through same pipeline as HealthKit workouts)
-        generateAnalysis(for: workout)
-
-        // Auto-record post-workout check-in using the effort level selected
+        // Auto-record check-in locally
         let feeling = mapEffortToFeeling(perceivedEffort)
         persistenceService.savePostWorkoutCheckIn(
             workoutId: workout.id,
             feeling: feeling,
             note: note.isEmpty ? nil : note
         )
-        print("📱 AddWorkoutView: ✅ Auto-recorded post-workout check-in (effort: \(feeling))")
-
-        // Mark the check-in as completed so we don't show the modal
         WorkoutMonitor.shared.postWorkoutCheckInCompleted(for: workout.id)
 
-        // BROADCAST: Unified data pipeline
-        DataBroadcaster.shared.workoutSaved(id: workout.id)
-        DataBroadcaster.shared.checkInSaved(workoutId: workout.id)
-        print("📱 AddWorkoutView: ✅ Broadcast sent")
-
-        print("📱 AddWorkoutView: PHASE 1 COMPLETE - Local data saved")
-        print("📱 AddWorkoutView: ══════════════════════════════════════")
-
         // ══════════════════════════════════════════════════════════════
-        // PHASE 2: UI UPDATE (immediate - before any async work)
+        // STEP 2: DISMISS MODAL IMMEDIATELY (before any callbacks)
         // ══════════════════════════════════════════════════════════════
-        print("📱 AddWorkoutView: PHASE 2: UI UPDATE")
-
-        // CRITICAL: Reset UI state and dismiss BEFORE any cloud sync
-        // This ensures the user is never blocked by network operations
         isSaving = false
-        onSave?(workout)
-
-        print("📱 AddWorkoutView: ✅ onSave callback fired")
-        print("📱 AddWorkoutView: ✅ Dismissing view NOW")
+        print("🏋️ MODAL DISMISS TRIGGERED")
         dismiss()
 
         // ══════════════════════════════════════════════════════════════
-        // PHASE 3: CLOUD SYNC (detached background, non-blocking)
+        // STEP 3: BROADCAST + CALLBACKS (after dismiss, non-blocking)
         // ══════════════════════════════════════════════════════════════
-        if authService.isAuthenticated {
-            print("📱 AddWorkoutView: PHASE 3: CLOUD SYNC (background)")
-            print("📱 AddWorkoutView: userId = \(authService.userId?.uuidString ?? "nil")")
+        // Use DispatchQueue.main.async to ensure dismiss() completes first
+        DispatchQueue.main.async { [onSave, workout] in
+            print("🏋️ HOME REFRESH BROADCAST SENT")
+            DataBroadcaster.shared.workoutSaved(id: workout.id)
+            DataBroadcaster.shared.checkInSaved(workoutId: workout.id)
+            onSave?(workout)
+        }
 
-            // CRITICAL: Use Task.detached to ensure cloud sync doesn't block main actor
-            // The sync service is @MainActor but we don't need to wait for it
-            let syncService = self.syncService
-            let workoutToSync = workout
-            let feelingToSync = feeling
-            let noteToSync = note.isEmpty ? nil : note
+        // ══════════════════════════════════════════════════════════════
+        // STEP 4: BACKGROUND WORK (analysis + cloud sync)
+        // ══════════════════════════════════════════════════════════════
+        let workoutToProcess = workout
+        let feelingToSync = feeling
+        let noteToSync = note.isEmpty ? nil : note
+        let isAuthenticated = authService.isAuthenticated
+        let syncService = self.syncService
+        let persistenceService = self.persistenceService
 
-            Task.detached(priority: .utility) {
-                print("📱 AddWorkoutView: [BACKGROUND] Starting cloud sync...")
+        Task.detached(priority: .utility) {
+            // Generate analysis in background
+            await MainActor.run {
+                let context = persistenceService.fetchTodayDailyContext()
+                let recentWorkouts = persistenceService.fetchRecentWorkouts(limit: 10)
+                    .filter { $0.id != workoutToProcess.id }
 
-                // Sync workout with timeout protection
-                await syncService.syncWorkoutWithTimeout(workoutToSync, timeout: 15)
+                let interpretation = InterpretationEngine.interpret(
+                    workout: workoutToProcess,
+                    context: context,
+                    previousWorkouts: recentWorkouts
+                )
 
-                // Sync check-in with timeout protection
+                persistenceService.saveWorkoutInterpretation(
+                    workoutId: workoutToProcess.id,
+                    interpretation: interpretation
+                )
+            }
+
+            // Cloud sync (if authenticated)
+            if isAuthenticated {
+                print("🏋️ BACKGROUND CLOUD SYNC START")
+
+                await syncService.syncWorkoutWithTimeout(workoutToProcess, timeout: 15)
                 await syncService.syncPostWorkoutCheckInWithTimeout(
-                    workoutId: workoutToSync.id,
+                    workoutId: workoutToProcess.id,
                     feeling: feelingToSync,
                     note: noteToSync,
                     timeout: 10
                 )
 
-                print("📱 AddWorkoutView: [BACKGROUND] Cloud sync completed")
+                print("🏋️ BACKGROUND CLOUD SYNC SUCCESS")
             }
-        } else {
-            print("📱 AddWorkoutView: ⏭️ Skipping cloud sync - not authenticated")
         }
+
+        print("🏋️ ════════════════════════════════════════════════════")
+        print("🏋️ WORKOUT SAVE FLOW COMPLETE (modal dismissed)")
+        print("🏋️ ════════════════════════════════════════════════════")
     }
 
     private func saveCustomType(_ typeName: String) {

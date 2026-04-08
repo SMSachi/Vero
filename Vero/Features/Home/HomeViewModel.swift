@@ -123,22 +123,20 @@ final class HomeViewModel: ObservableObject {
 
     /// Load data from local persistence (for immediate display before HealthKit fetch)
     private func loadCachedData() {
-        print("🏠 HomeViewModel: loadCachedData() STARTED")
+        print("💾 ════════════════════════════════════════════════════")
+        print("💾 HOME REFRESH START")
+        print("💾 ════════════════════════════════════════════════════")
         let startTime = CFAbsoluteTimeGetCurrent()
 
         // Load recent workouts first
-        print("🏠 HomeViewModel: Fetching recent workouts...")
         let cachedRecent = persistenceService.fetchRecentWorkouts(limit: 10)
-        print("🏠 HomeViewModel: Recent workouts fetched: \(cachedRecent.count)")
         if !cachedRecent.isEmpty {
             self.recentWorkouts = cachedRecent
             self.hasRealData = true
         }
 
         // Get latest workout
-        print("🏠 HomeViewModel: Fetching latest workout...")
         if let cachedWorkout = persistenceService.fetchLatestWorkout() {
-            print("🏠 HomeViewModel: Latest workout found: \(cachedWorkout.id)")
             self.latestWorkout = cachedWorkout
             self.hasRealData = true
 
@@ -146,28 +144,51 @@ final class HomeViewModel: ObservableObject {
             if let storedInterpretation = persistenceService.getStoredInterpretation(for: cachedWorkout.id) {
                 self.workoutInterpretation = storedInterpretation
             }
-        } else {
-            print("🏠 HomeViewModel: No latest workout found")
         }
 
-        // Load cached daily context
-        print("🏠 HomeViewModel: Fetching daily context...")
+        // Load cached daily context - ALWAYS update values (even to 0/nil)
         if let cachedContext = persistenceService.fetchTodayDailyContext() {
             self.dailyContext = cachedContext
-            // Also update water intake from daily context
-            if let waterMl = cachedContext.waterIntakeMl, waterMl > 0 {
-                self.waterIntake = Double(waterMl) / 1000.0
+
+            // ALWAYS update water intake from context (including 0)
+            let waterMl = cachedContext.waterIntakeMl ?? 0
+            let waterLiters = Double(waterMl) / 1000.0
+            let previousWater = self.waterIntake
+            self.waterIntake = waterLiters
+
+            print("💾 VALUE LOADED into Home card: HYDRATION")
+            print("💾   Previous: \(String(format: "%.2f", previousWater))L")
+            print("💾   New: \(String(format: "%.2f", waterLiters))L (\(waterMl)ml from persistence)")
+
+            // Log sleep if available
+            if cachedContext.sleepHours > 0 {
+                print("💾 VALUE LOADED into Home card: SLEEP = \(String(format: "%.1f", cachedContext.sleepHours))h")
             }
+
+            // Log weight if available
+            if let weightKg = cachedContext.weightKg, weightKg > 0 {
+                print("💾 VALUE LOADED into Home card: WEIGHT = \(String(format: "%.1f", weightKg))kg")
+            }
+        } else {
+            // No context - reset values
+            self.dailyContext = nil
+            self.waterIntake = 0
+            print("💾 No daily context found - values reset to 0")
         }
 
         // Load cached recovery
-        print("🏠 HomeViewModel: Fetching recovery...")
         if let cachedRecovery = persistenceService.fetchTodayRecovery() {
             self.recovery = cachedRecovery
         }
 
         let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
-        print("🏠 HomeViewModel: loadCachedData() COMPLETED in \(String(format: "%.1f", elapsed))ms")
+        print("💾 ════════════════════════════════════════════════════")
+        print("💾 HOME REFRESH COMPLETE")
+        print("💾 Duration: \(String(format: "%.1f", elapsed))ms")
+        print("💾 Water: \(String(format: "%.2f", waterIntake))L")
+        print("💾 Sleep: \(String(format: "%.1f", dailyContext?.sleepHours ?? 0))h")
+        print("💾 Weight: \(dailyContext?.weightKg.map { String(format: "%.1f", $0) + "kg" } ?? "—")")
+        print("💾 ════════════════════════════════════════════════════")
     }
 
     // MARK: - Data Loading
@@ -318,27 +339,26 @@ final class HomeViewModel: ObservableObject {
 
     /// Refresh analytics after a workout is added.
     /// Call this from WorkoutsListView after AddWorkoutView saves.
+    /// Also called by DataBroadcaster when any metric is logged.
     func refreshAnalytics() {
-        print("📊 HomeViewModel: ─────────────────────────────────")
-        print("📊 HomeViewModel: REFRESHING DASHBOARD")
+        print("🔄 ════════════════════════════════════════════════════")
+        print("🔄 HOME: REFRESH TRIGGERED (broadcast received)")
+        print("🔄 ════════════════════════════════════════════════════")
 
-        // Reload from persistence
+        // Reload from persistence - this updates all @Published properties
         loadCachedData()
-        print("📊 HomeViewModel: Loaded cached data")
-        print("📊 HomeViewModel: Workouts this week: \(workoutsThisWeek)")
-        print("📊 HomeViewModel: Current streak: \(currentStreak)")
-        print("📊 HomeViewModel: Has real data: \(hasRealData)")
 
         // Regenerate interpretation if we have a workout
         if hasRealData {
             generateInterpretation()
-            print("📊 HomeViewModel: Regenerated interpretation")
         }
 
-        // Force UI update by publishing change
+        // Force UI update by publishing change (belt and suspenders)
         objectWillChange.send()
-        print("📊 HomeViewModel: ✅ DASHBOARD REFRESHED")
-        print("📊 HomeViewModel: ─────────────────────────────────")
+
+        print("🔄 ════════════════════════════════════════════════════")
+        print("🔄 HOME: REFRESH DONE")
+        print("🔄 ════════════════════════════════════════════════════")
     }
 
     /// Generate workout interpretation using the InterpretationEngine.

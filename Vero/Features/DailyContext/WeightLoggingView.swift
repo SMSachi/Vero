@@ -278,6 +278,10 @@ struct WeightLoggingView: View {
     }
 
     private func save() {
+        print("⚖️ ════════════════════════════════════════════════════")
+        print("⚖️ WEIGHT LOG START")
+        print("⚖️ ════════════════════════════════════════════════════")
+
         isSaving = true
 
         // Load or create today's context
@@ -302,18 +306,25 @@ struct WeightLoggingView: View {
         let kgToSave = weightKg
         context.weightKg = kgToSave
 
-        print("⚖️ WeightLoggingView: Saving \(kgToSave)kg (display: \(displayWeight) \(units.weightUnit))")
-        persistenceService.saveDailyContext(context)
-        print("⚖️ WeightLoggingView: ✅ Local save complete")
+        print("⚖️ WEIGHT: Value = \(String(format: "%.1f", kgToSave))kg (display: \(String(format: "%.1f", displayWeight)) \(units.weightUnit))")
 
-        // BROADCAST: Unified data pipeline
+        // Save to persistence
+        persistenceService.saveDailyContext(context)
+        print("⚖️ LOCAL SAVE SUCCESS")
+
+        // Broadcast to update Home and Trends
         DataBroadcaster.shared.weightSaved(kg: kgToSave)
         DataBroadcaster.shared.dailyContextSaved()
-        print("⚖️ WeightLoggingView: ✅ Broadcast sent")
 
-        // Sync in background
+        print("⚖️ ════════════════════════════════════════════════════")
+        print("⚖️ WEIGHT LOG COMPLETE → Home & Trends will refresh")
+        print("⚖️ ════════════════════════════════════════════════════")
+
+        // Sync in background with timeout protection
         Task.detached(priority: .utility) { [syncService, context] in
-            await syncService.syncDailyContext(context)
+            print("⚖️ BACKGROUND CLOUD SYNC START")
+            await syncService.syncDailyContextWithTimeout(context, timeout: 10)
+            print("⚖️ BACKGROUND CLOUD SYNC COMPLETE")
         }
 
         // Show success

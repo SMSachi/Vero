@@ -379,19 +379,15 @@ struct DailyContextInputView: View {
         }
 
         // ══════════════════════════════════════════════════════════════════════════
-        // PHASE 3: CLOUD SYNC (Supabase - non-blocking)
+        // PHASE 3: CLOUD SYNC (Supabase - non-blocking with timeout)
         // ══════════════════════════════════════════════════════════════════════════
         Task.detached(priority: .utility) { [syncService, context] in
-            print("📊 [SYNC] ════════════════════════════════════════════════════════")
-            print("📊 [SYNC] Starting Supabase sync for daily_contexts table...")
-            print("📊 [SYNC] Context ID: \(context.id)")
+            print("📊 BACKGROUND CLOUD SYNC START")
+            print("📊 Context ID: \(context.id)")
 
-            let startTime = Date()
-            await syncService.syncDailyContext(context)
-            let elapsed = Date().timeIntervalSince(startTime)
+            await syncService.syncDailyContextWithTimeout(context, timeout: 10)
 
-            print("📊 [SYNC] Sync completed in \(String(format: "%.2f", elapsed))s")
-            print("📊 [SYNC] ════════════════════════════════════════════════════════")
+            print("📊 BACKGROUND CLOUD SYNC COMPLETE")
         }
 
         // Show success

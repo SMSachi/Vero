@@ -179,35 +179,47 @@ final class MetricDataService {
         let range = maxWeight - minWeight
         let chartData = values.map { CGFloat(($0 - minWeight) / range) }
 
+        // Format change for insight using user's preferred units
+        let changeForInsight = String(format: "%.1f %@", units.displayWeight(abs(absoluteChange)), units.weightUnit)
+        let latestForInsight = String(format: "%.1f %@", units.displayWeight(latest), units.weightUnit)
+
         let insight: String
         if weightEntries.count < 3 {
             insight = "Keep logging weight to see trends. Consistent tracking helps identify patterns."
         } else if isWeightLossGoal {
             if absoluteChange < -0.5 {
-                insight = "Great progress! You've lost \(String(format: "%.1f", abs(absoluteChange))) kg. Keep up the consistent effort."
+                insight = "Great progress! You've lost \(changeForInsight). Keep up the consistent effort."
             } else if absoluteChange > 0.5 {
-                insight = "Weight has increased by \(String(format: "%.1f", absoluteChange)) kg. Review nutrition and activity levels."
+                insight = "Weight has increased by \(changeForInsight). Review nutrition and activity levels."
             } else {
                 insight = "Weight is stable. For weight loss, consider adjusting calorie intake or increasing activity."
             }
         } else {
             if absoluteChange > 0.5 {
-                insight = "Weight increased by \(String(format: "%.1f", absoluteChange)) kg. Ensure it's lean mass through strength training."
+                insight = "Weight increased by \(changeForInsight). Ensure it's lean mass through strength training."
             } else if absoluteChange < -0.5 {
-                insight = "Weight decreased by \(String(format: "%.1f", abs(absoluteChange))) kg. Monitor if this aligns with your goals."
+                insight = "Weight decreased by \(changeForInsight). Monitor if this aligns with your goals."
             } else {
-                insight = "Weight is stable at \(String(format: "%.1f", latest)) kg."
+                insight = "Weight is stable at \(latestForInsight)."
             }
         }
 
         print("📊 MetricDataService: Weight - latest=\(String(format: "%.1f", latest))kg, change=\(String(format: "%.1f", absoluteChange))kg")
 
+        // Format using unit preferences (kg or lb)
+        let displayLatest = units.formatWeight(latest)
+        let displayAverage = units.formatWeight(values.reduce(0, +) / Double(values.count))
+        let displayChange = String(format: "%@%.1f %@",
+            absoluteChange >= 0 ? "+" : "",
+            units.displayWeight(abs(absoluteChange)),
+            units.weightUnit)
+
         return MetricDetailData(
             metricType: .weight,
-            currentValue: String(format: "%.1f kg", latest),
-            averageValue: String(format: "%.1f kg", values.reduce(0, +) / Double(values.count)),
+            currentValue: displayLatest,
+            averageValue: displayAverage,
             change: percentChange,
-            changeLabel: String(format: "%@%.1f kg", absoluteChange >= 0 ? "+" : "", absoluteChange),
+            changeLabel: displayChange,
             isPositiveChange: isPositive,
             chartData: chartData,
             chartLabels: generateDateLabels(for: weightEntries.map { $0.date }),

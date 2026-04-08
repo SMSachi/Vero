@@ -138,7 +138,10 @@ struct LoginView: View {
     private func login() {
         guard isFormValid else { return }
 
-        print("🔐 LoginView: [v4] login() STARTED")
+        print("🔐 ════════════════════════════════════════════════════")
+        print("🔐 LOGIN: SIGN-IN STARTED")
+        print("🔐 LOGIN: Email: \(email)")
+        print("🔐 ════════════════════════════════════════════════════")
 
         // Dismiss keyboard
         focusedField = nil
@@ -148,19 +151,23 @@ struct LoginView: View {
 
         Task { @MainActor in
             do {
-                print("🔐 LoginView: [v4] Calling authService.signIn...")
+                print("🔐 LOGIN: Calling authService.signIn...")
                 try await authService.signIn(email: email, password: password)
-                print("🔐 LoginView: [v4] ✅ signIn returned, isAuthenticated=\(authService.isAuthenticated)")
 
-                // Reset state - view will be replaced by MainTabView
+                print("🔐 ════════════════════════════════════════════════════")
+                print("🔐 LOGIN: ✅ SIGN-IN SUCCESS")
+                print("🔐 LOGIN: isAuthenticated = \(authService.isAuthenticated)")
+                print("🔐 ════════════════════════════════════════════════════")
+
                 isSubmitting = false
 
-                // Post notification to force UI transition
+                // CRITICAL: Post notification to force UI transition
+                // SwiftUI's reactive observation with singletons doesn't reliably trigger view replacement
                 NotificationCenter.default.post(name: .authStateDidChange, object: nil)
-                print("🔐 LoginView: [v4] ✅ DONE - posted authStateDidChange notification")
+                print("🔐 LOGIN: Posted authStateDidChange notification")
 
             } catch {
-                print("🔐 LoginView: [v4] ❌ Error: \(error)")
+                print("🔐 LOGIN: ❌ SIGN-IN FAILED: \(error)")
                 isSubmitting = false
             }
         }

@@ -5,27 +5,34 @@
 //  Main app entry point with clean routing architecture.
 //
 //  ARCHITECTURE:
-//  - AppRoute enum is THE SINGLE SOURCE OF TRUTH for navigation
-//  - No guest mode - authentication is required
-//  - Flow: onboarding (new users) → auth → main
-//  - Onboarding can be skipped → goes to auth
-//  - MainTabView does NOT mount until authenticated
+//  - Uses @State showMainApp for reliable SwiftUI view switching
+//  - NotificationCenter bypasses SwiftUI's reactive system for singletons
+//  - ZStack with transitions for smooth animation
+//
+//  AUTH FIX (PERMANENT):
+//  - Use @State showMainApp (local state SwiftUI definitely observes)
+//  - Use NotificationCenter to force transition (bypasses singleton issues)
+//  - Use ZStack (not Group) for reliable view replacement
+//
+//  IF AUTH BREAKS AGAIN:
+//  1. Check LoginView posts .authStateDidChange notification after sign-in
+//  2. Check AppRootView listens with .onReceive
+//  3. Ensure showMainApp is @State
+//  4. Use ZStack, not Group
 //
 
 import SwiftUI
 import SwiftData
 import Combine
 
-// MARK: - Notifications
+// MARK: - Notification for Auth State Change
 
 extension Notification.Name {
     static let authStateDidChange = Notification.Name("authStateDidChange")
 }
 
-// MARK: - App Route (SINGLE SOURCE OF TRUTH)
+// MARK: - App Route
 
-/// The ONE place that determines which root screen to show.
-/// Computed directly from AuthService state - no caching, no local copies.
 enum AppRoute: Equatable {
     case loading
     case onboarding
@@ -36,7 +43,7 @@ enum AppRoute: Equatable {
 @main
 struct InsioApp: App {
     @StateObject private var appState = AppState()
-    @ObservedObject private var authService = AuthService.shared
+    @StateObject private var authService = AuthService.shared
     @StateObject private var syncService = SupabaseSyncService.shared
     @StateObject private var premiumManager = PremiumManager.shared
 
@@ -72,26 +79,31 @@ struct InsioApp: App {
 
 // MARK: - App Root View
 
+/// Root view using @State + NotificationCenter for reliable auth transitions.
+/// SwiftUI's reactive observation with singletons doesn't reliably trigger view replacement,
+/// so we use NotificationCenter to force the transition.
 struct AppRootView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var authService: AuthService
 
+    /// Local state that SwiftUI definitely observes
     @State private var showMainApp = false
 
     var body: some View {
         ZStack {
             if showMainApp {
                 MainTabView()
-                    .transition(.move(edge: .trailing))
+                    .transition(.opacity)
                     .onAppear {
                         print("🧭 ✅ MainTabView APPEARED")
                         appState.onAuthenticationSuccess()
                     }
             } else {
                 authFlow
-                    .transition(.move(edge: .leading))
+                    .transition(.opacity)
             }
         }
+        .id(showMainApp) // CRITICAL: Forces complete view replacement
         .animation(.easeInOut(duration: 0.3), value: showMainApp)
         .onAppear {
             showMainApp = authService.isAuthenticated

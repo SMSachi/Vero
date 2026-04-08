@@ -297,6 +297,10 @@ struct SleepLoggingView: View {
     }
 
     private func save() {
+        print("😴 ════════════════════════════════════════════════════")
+        print("😴 SLEEP LOG START")
+        print("😴 ════════════════════════════════════════════════════")
+
         isSaving = true
 
         // Load or create today's context
@@ -321,19 +325,25 @@ struct SleepLoggingView: View {
         context.sleepHours = sleepHours
         context.sleepQuality = sleepQuality
 
-        // Save locally
-        print("😴 SleepLoggingView: Saving \(sleepHours)h (\(sleepQuality.rawValue))...")
-        persistenceService.saveDailyContext(context)
-        print("😴 SleepLoggingView: ✅ Local save complete")
+        print("😴 SLEEP: Value = \(String(format: "%.1f", sleepHours))h (\(sleepQuality.rawValue))")
 
-        // BROADCAST: Unified data pipeline
+        // Save to persistence
+        persistenceService.saveDailyContext(context)
+        print("😴 LOCAL SAVE SUCCESS")
+
+        // Broadcast to update Home and Trends
         DataBroadcaster.shared.sleepSaved(hours: sleepHours)
         DataBroadcaster.shared.dailyContextSaved()
-        print("😴 SleepLoggingView: ✅ Broadcast sent")
 
-        // Sync in background
+        print("😴 ════════════════════════════════════════════════════")
+        print("😴 SLEEP LOG COMPLETE → Home & Trends will refresh")
+        print("😴 ════════════════════════════════════════════════════")
+
+        // Sync in background with timeout protection
         Task.detached(priority: .utility) { [syncService, context] in
-            await syncService.syncDailyContext(context)
+            print("😴 BACKGROUND CLOUD SYNC START")
+            await syncService.syncDailyContextWithTimeout(context, timeout: 10)
+            print("😴 BACKGROUND CLOUD SYNC COMPLETE")
         }
 
         // Show success

@@ -181,27 +181,38 @@ struct SignupView: View {
     private func signUp() {
         guard isFormValid else { return }
 
-        print("🔐 SignupView: signUp() started")
+        print("🔐 ════════════════════════════════════════════════════")
+        print("🔐 SIGNUP: REGISTRATION STARTED")
+        print("🔐 SIGNUP: Email: \(email)")
+        print("🔐 ════════════════════════════════════════════════════")
+
         focusedField = nil
         isSubmitting = true
 
-        Task {
+        Task { @MainActor in
             do {
-                print("🔐 SignupView: Calling authService.signUp...")
+                print("🔐 SIGNUP: Calling authService.signUp...")
                 try await authService.signUp(
                     email: email,
                     password: password,
                     fullName: fullName.isEmpty ? nil : fullName
                 )
-                print("🔐 SignupView: ✅ signUp completed successfully")
+
+                // Auth state change happens in AuthService
+                // AppRootView will recompute route automatically since authService.isAuthenticated changed
+                print("🔐 ════════════════════════════════════════════════════")
+                print("🔐 SIGNUP: ✅ REGISTRATION SUCCESS")
+                print("🔐 SIGNUP: isAuthenticated = \(authService.isAuthenticated)")
+                print("🔐 SIGNUP: Route will transition automatically")
+                print("🔐 ════════════════════════════════════════════════════")
+
             } catch AuthError.emailConfirmationRequired {
-                print("🔐 SignupView: Email confirmation required")
+                print("🔐 SIGNUP: Email confirmation required - showing alert")
                 showEmailConfirmation = true
             } catch {
-                print("🔐 SignupView: ❌ signUp failed: \(error)")
+                print("🔐 SIGNUP: ❌ REGISTRATION FAILED: \(error)")
             }
             isSubmitting = false
-            print("🔐 SignupView: signUp() finished, isSubmitting=false")
         }
     }
 }

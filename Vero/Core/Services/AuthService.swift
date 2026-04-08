@@ -355,9 +355,11 @@ final class AuthService: ObservableObject {
 
     /// Sign in with email and password
     func signIn(email: String, password: String) async throws {
-        print("🔐 AuthService: ========== SIGNIN ATTEMPT ==========")
-        print("🔐 AuthService: Email: \(email)")
-        print("🔐 AuthService: Password length: \(password.count)")
+        print("🔐 ════════════════════════════════════════════════════════════════")
+        print("🔐 AUTH SERVICE: SIGN-IN ATTEMPT")
+        print("🔐 AUTH SERVICE: Email: \(email)")
+        print("🔐 AUTH SERVICE: isAuthenticated BEFORE: \(isAuthenticated)")
+        print("🔐 ════════════════════════════════════════════════════════════════")
 
         errorMessage = nil
         // NOTE: Don't set isLoading = true here - it causes RootView to flash loading screen
@@ -365,27 +367,27 @@ final class AuthService: ObservableObject {
 
         // Validate inputs
         guard isValidEmail(email) else {
-            print("🔐 AuthService: ❌ Email validation failed")
+            print("🔐 AUTH SERVICE: ❌ Email validation failed")
             isLoading = false
             errorMessage = "Please enter a valid email address"
             throw AuthError.invalidEmail
         }
 
         guard password.count >= 6 else {
-            print("🔐 AuthService: ❌ Password too short")
+            print("🔐 AUTH SERVICE: ❌ Password too short")
             isLoading = false
             errorMessage = "Invalid email or password"
             throw AuthError.invalidCredentials
         }
 
         guard SupabaseConfig.isConfigured else {
-            print("🔐 AuthService: ❌ Supabase not configured")
+            print("🔐 AUTH SERVICE: ❌ Supabase not configured")
             isLoading = false
             errorMessage = "Authentication service not configured"
             throw AuthError.notConfigured
         }
 
-        print("🔐 AuthService: 🚀 Sending signin request to Supabase...")
+        print("🔐 AUTH SERVICE: Sending sign-in request to Supabase...")
 
         do {
             let session = try await SupabaseConfig.client.auth.signIn(
@@ -393,19 +395,24 @@ final class AuthService: ObservableObject {
                 password: password
             )
 
-            print("🔐 AuthService: ✅ Signin successful")
-            print("🔐 AuthService: User: \(session.user.email ?? "unknown")")
+            print("🔐 ════════════════════════════════════════════════════════════════")
+            print("🔐 AUTH SERVICE: ✅ SIGN-IN SUCCESS")
+            print("🔐 AUTH SERVICE: User: \(session.user.email ?? "unknown")")
+            print("🔐 AUTH SERVICE: Setting isAuthenticated = true...")
+            print("🔐 ════════════════════════════════════════════════════════════════")
 
-            // Update state - @Published will notify observers
-            print("🔐 AuthService: Setting isAuthenticated=true...")
+            // Update state - @Published will notify observers and trigger route recomputation
             self.currentUser = session.user
             self.isAuthenticated = true
             self.isLoading = false
-            print("🔐 AuthService: ✅ State set: isAuthenticated=\(isAuthenticated)")
+
+            print("🔐 AUTH SERVICE: ✅ isAuthenticated SET TO TRUE")
+            print("🔐 AUTH SERVICE: AppRootView will recompute route → main")
+            print("🔐 ════════════════════════════════════════════════════════════════")
 
         } catch {
-            print("🔐 AuthService: ❌ Signin error: \(error)")
-            print("🔐 AuthService: Error description: \(error.localizedDescription)")
+            print("🔐 AUTH SERVICE: ❌ SIGN-IN FAILED: \(error)")
+            print("🔐 AUTH SERVICE: Error: \(error.localizedDescription)")
 
             isLoading = false
             errorMessage = parseSupabaseError(error)
