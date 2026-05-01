@@ -47,39 +47,42 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        // DEBUG: Log every body evaluation
-        let _ = print("📱 MainTabView: body EVALUATING - START")
-
         ZStack(alignment: .bottom) {
-            // Content
-            let _ = print("📱 MainTabView: Creating TabView...")
-            TabView(selection: $selectedTab) {
-                let _ = print("📱 MainTabView: Creating HomeDashboardView...")
+            // Tab content — all four views live simultaneously so state (ViewModels,
+            // scroll position) persists across tab switches. No UIPageViewController,
+            // no gesture recognizer conflicts.
+            ZStack {
                 HomeDashboardView()
-                    .tag(Tab.home)
+                    .opacity(selectedTab == .home ? 1 : 0)
+                    .allowsHitTesting(selectedTab == .home)
 
-                let _ = print("📱 MainTabView: Creating WorkoutsListView...")
                 WorkoutsListView()
-                    .tag(Tab.workouts)
+                    .opacity(selectedTab == .workouts ? 1 : 0)
+                    .allowsHitTesting(selectedTab == .workouts)
 
-                let _ = print("📱 MainTabView: Creating TrendsView...")
                 TrendsView()
-                    .tag(Tab.trends)
+                    .opacity(selectedTab == .trends ? 1 : 0)
+                    .allowsHitTesting(selectedTab == .trends)
 
-                let _ = print("📱 MainTabView: Creating ProfileView...")
                 ProfileView()
-                    .tag(Tab.profile)
-
-                let _ = print("📱 MainTabView: All tab views created")
+                    .opacity(selectedTab == .profile ? 1 : 0)
+                    .allowsHitTesting(selectedTab == .profile)
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(AppColors.background)
 
             // Custom tab bar
             CustomTabBar(selectedTab: $selectedTab)
         }
+        .background(AppColors.background.ignoresSafeArea())
         .ignoresSafeArea(.keyboard)
-        // Post-workout check-in modal (full screen)
-        .fullScreenCover(isPresented: $appState.showPostWorkoutCheckIn) {
+        // Post-workout check-in: guard against empty cover when checkInWorkout is nil
+        .fullScreenCover(
+            isPresented: Binding(
+                get: { appState.showPostWorkoutCheckIn && appState.checkInWorkout != nil },
+                set: { if !$0 { appState.showPostWorkoutCheckIn = false } }
+            )
+        ) {
             if let workout = appState.checkInWorkout {
                 PostWorkoutCheckInView(workout: workout)
             }
@@ -89,27 +92,20 @@ struct MainTabView: View {
             NextDayCheckInView()
         }
         .onAppear {
-            print("📱 ══════════════════════════════════════════════════")
-            print("📱 MainTabView: APPEARED")
-            print("📱 MainTabView: selectedTab = \(selectedTab.rawValue)")
-            print("📱 MainTabView: showPostWorkoutCheckIn = \(appState.showPostWorkoutCheckIn)")
-            print("📱 MainTabView: showNextDayCheckIn = \(appState.showNextDayCheckIn)")
-            print("📱 ══════════════════════════════════════════════════")
-            // Check for pending check-ins when app first appears
+            #if DEBUG
+            print("📱 MainTabView: onAppear — tab container ready")
+            #endif
             appState.checkForPendingCheckIns()
         }
-        .onChange(of: appState.showPostWorkoutCheckIn) { _, show in
-            print("📱 MainTabView: showPostWorkoutCheckIn changed to \(show)")
-        }
-        .onChange(of: appState.showNextDayCheckIn) { _, show in
-            print("📱 MainTabView: showNextDayCheckIn changed to \(show)")
-        }
         .onChange(of: scenePhase) { oldPhase, newPhase in
-            // Check for pending check-ins when app becomes active (from background)
             if newPhase == .active && oldPhase != .active {
-                print("📱 MainTabView: App became active - checking for pending check-ins")
                 appState.checkForPendingCheckIns()
             }
+        }
+        .onChange(of: selectedTab) { _, newTab in
+            #if DEBUG
+            print("📱 MainTabView: tab switched to \(newTab.title)")
+            #endif
         }
     }
 }
@@ -126,6 +122,9 @@ struct CustomTabBar: View {
                     tab: tab,
                     isSelected: selectedTab == tab
                 ) {
+                    #if DEBUG
+                    print("📱 TabBar: tapped \(tab.title)")
+                    #endif
                     withAnimation(AppAnimation.springQuick) {
                         selectedTab = tab
                     }

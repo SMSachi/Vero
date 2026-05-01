@@ -46,6 +46,17 @@ final class OpenRouterService: ObservableObject {
     private init() {
         // Load cached enhancements
         loadCache()
+        #if DEBUG
+        let key = InsioConfig.OpenRouter.apiKey
+        let keyPrefix = key.count >= 5 ? String(key.prefix(5)) : key
+        if InsioConfig.OpenRouter.isConfigured {
+            print("🤖 OpenRouter: ✅ API key configured (prefix='\(keyPrefix)...'), model=\(InsioConfig.OpenRouter.model)")
+        } else {
+            print("🤖 OpenRouter: ❌ NOT CONFIGURED — key is placeholder '\(keyPrefix)...'")
+            print("🤖 OpenRouter: ❌ All AI calls will use local fallback text.")
+            print("🤖 OpenRouter: ❌ To enable: set InsioConfig.OpenRouter.apiKey to your real key from https://openrouter.ai/keys")
+        }
+        #endif
     }
 
     // MARK: - Enhancement (Pro Feature)
@@ -200,18 +211,36 @@ final class OpenRouterService: ObservableObject {
     // MARK: - API Call
 
     private func callOpenRouter(prompt: String) async throws -> String {
+        // ── Key validation ──────────────────────────────────────────────────────
+        let apiKey = InsioConfig.OpenRouter.apiKey
+        #if DEBUG
+        let keyPrefix = apiKey.count >= 5 ? String(apiKey.prefix(5)) : apiKey
+        print("🤖 OpenRouter: ══════════════════════════════════════════════")
+        print("🤖 OpenRouter: API CALL STARTING")
+        print("🤖 OpenRouter: key prefix  = \"\(keyPrefix)...\" (isConfigured=\(InsioConfig.OpenRouter.isConfigured))")
+        print("🤖 OpenRouter: model       = \(InsioConfig.OpenRouter.model)")
+        print("🤖 OpenRouter: endpoint    = \(InsioConfig.OpenRouter.baseURL)/chat/completions")
+        print("🤖 OpenRouter: max_tokens  = \(InsioConfig.OpenRouter.maxTokens)")
+        print("🤖 OpenRouter: temperature = \(InsioConfig.OpenRouter.temperature)")
+        #endif
+
         guard InsioConfig.OpenRouter.isConfigured else {
+            #if DEBUG
+            print("🤖 OpenRouter: ❌ ABORT — key is placeholder (starts with 'YOUR_'). Set a real key in InsioConfig.swift.")
+            print("🤖 OpenRouter: ══════════════════════════════════════════════")
+            #endif
             throw OpenRouterError.notConfigured
         }
 
         let url = URL(string: "\(InsioConfig.OpenRouter.baseURL)/chat/completions")!
 
         var request = URLRequest(url: url)
+        request.timeoutInterval = 30
         request.httpMethod = "POST"
-        request.setValue("Bearer \(InsioConfig.OpenRouter.apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Insio Health App", forHTTPHeaderField: "HTTP-Referer")
-        request.setValue("Insio Health", forHTTPHeaderField: "X-Title")
+        request.setValue("Insio", forHTTPHeaderField: "HTTP-Referer")
+        request.setValue("Insio", forHTTPHeaderField: "X-Title")
 
         let body: [String: Any] = [
             "model": InsioConfig.OpenRouter.model,
@@ -224,16 +253,40 @@ final class OpenRouterService: ObservableObject {
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
+        // ── Pre-request log ─────────────────────────────────────────────────────
+        #if DEBUG
+        print("🤖 OpenRouter: 📤 PAYLOAD (prompt length=\(prompt.count) chars):")
+        print("🤖 OpenRouter: --- prompt start ---")
+        print(prompt)
+        print("🤖 OpenRouter: --- prompt end ---")
+        print("🤖 OpenRouter: Sending request to OpenRouter now...")
+        #endif
+
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
+            #if DEBUG
+            print("🤖 OpenRouter: ❌ ERROR — response is not HTTPURLResponse")
+            print("🤖 OpenRouter: ══════════════════════════════════════════════")
+            #endif
             throw OpenRouterError.invalidResponse
         }
 
+        // ── Raw response log ────────────────────────────────────────────────────
+        let rawBody = String(data: data, encoding: .utf8) ?? "<non-utf8 data>"
+        #if DEBUG
+        print("🤖 OpenRouter: 📥 RESPONSE status=\(httpResponse.statusCode)")
+        print("🤖 OpenRouter: --- raw response start ---")
+        print(rawBody)
+        print("🤖 OpenRouter: --- raw response end ---")
+        #endif
+
         guard httpResponse.statusCode == 200 else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            print("🤖 OpenRouter: API error \(httpResponse.statusCode): \(errorBody)")
-            throw OpenRouterError.apiError(httpResponse.statusCode, errorBody)
+            #if DEBUG
+            print("🤖 OpenRouter: ❌ API ERROR \(httpResponse.statusCode): \(rawBody)")
+            print("🤖 OpenRouter: ══════════════════════════════════════════════")
+            #endif
+            throw OpenRouterError.apiError(httpResponse.statusCode, rawBody)
         }
 
         // Parse response
@@ -242,9 +295,17 @@ final class OpenRouterService: ObservableObject {
               let firstChoice = choices.first,
               let message = firstChoice["message"] as? [String: Any],
               let content = message["content"] as? String else {
+            #if DEBUG
+            print("🤖 OpenRouter: ❌ PARSE ERROR — could not extract content from response")
+            print("🤖 OpenRouter: ══════════════════════════════════════════════")
+            #endif
             throw OpenRouterError.parseError
         }
 
+        #if DEBUG
+        print("🤖 OpenRouter: ✅ SUCCESS — content extracted (\(content.count) chars)")
+        print("🤖 OpenRouter: ══════════════════════════════════════════════")
+        #endif
         return content
     }
 
