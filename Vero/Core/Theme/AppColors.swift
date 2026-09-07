@@ -1,6 +1,6 @@
 //
 //  AppColors.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  STRICT COLOR SYSTEM:
 //  - NAVY = primary (headers, selected states, nav bar)
@@ -216,8 +216,3 @@ extension View {
     }
 }
 
-// MARK: - Color Convenience
-
-extension Color {
-    static let vero = AppColors.self
-}

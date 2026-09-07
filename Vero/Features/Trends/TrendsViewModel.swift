@@ -1,6 +1,6 @@
 //
 //  TrendsViewModel.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  ViewModel for the Trends screen that manages trend analysis
 //  and provides data to the view.
@@ -45,18 +45,23 @@ final class TrendsViewModel: ObservableObject {
     // MARK: - Initialization
 
     init() {
-        print("📈 TrendsViewModel: init() - subscribing to DataBroadcaster")
-
-        // Subscribe to trends-relevant data changes
+        // Subscribe to trends-relevant data changes.
+        // Debounced: multiple rapid saves (e.g. daily context) fire one reload, not many.
         DataBroadcaster.shared.trendsDataChanged
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] event in
-                print("📊 ════════════════════════════════════════════════════")
-                print("📊 TRENDS: REFRESH TRIGGERED (broadcast: \(event.type.rawValue))")
-                print("📊 ════════════════════════════════════════════════════")
-                Task { [weak self] in
-                    await self?.loadTrends()
-                }
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { [weak self] in await self?.loadTrends() }
+            }
+            .store(in: &cancellables)
+
+        // Re-render when the user switches metric ↔ imperial.
+        // Unit strings are baked into MetricTrend at analysis time, so a full reload is required.
+        UnitPreferences.shared.$unitSystem
+            .receive(on: DispatchQueue.main)
+            .dropFirst() // skip initial emission
+            .sink { [weak self] _ in
+                Task { [weak self] in await self?.loadTrends() }
             }
             .store(in: &cancellables)
     }
@@ -90,26 +95,20 @@ final class TrendsViewModel: ObservableObject {
 
     // MARK: - Methods
 
-    /// Load trends for the selected timeframe
+    /// Load trends for the selected timeframe.
+    /// Fetches SwiftData on main actor, then runs analysis on a background thread.
     func loadTrends() async {
-        print("📊 TRENDS REFRESH START")
         isLoading = true
-
-        // Run analysis - reads from same PersistenceService as Home
-        let result = TrendAnalysisEngine.analyze(timeframe: selectedTimeframe.days)
-
-        // Update state
+        let days = selectedTimeframe.days
+        let result = await Task.detached(priority: .userInitiated) {
+            await TrendAnalysisEngine.analyze(timeframe: days)
+        }.value
         analysisResult = result
         hasRealData = result.workoutCount > 0
-
         isLoading = false
-
-        print("📊 ════════════════════════════════════════════════════")
-        print("📊 TRENDS REFRESH COMPLETE")
-        print("📊 Timeframe: \(selectedTimeframe.days) days")
-        print("📊 Workouts: \(result.workoutCount)")
-        print("📊 Metrics: \(result.metricTrends.count)")
-        print("📊 ════════════════════════════════════════════════════")
+        #if DEBUG
+        MetricsEngine.shared.auditLog(screen: "Trends", rollingDays: days)
+        #endif
     }
 
     /// Refresh trends

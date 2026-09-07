@@ -1,8 +1,8 @@
 //
-//  InsioConfig.swift
-//  Insio Health
+//  WellPatternConfig.swift
+//  WellPattern Health
 //
-//  Central configuration for Insio Health app services.
+//  Central configuration for WellPattern Health app services.
 //  Contains API keys, product identifiers, and tier limits.
 //
 //  TIERS:
@@ -18,17 +18,26 @@
 
 import Foundation
 
-// MARK: - Insio Configuration
+// MARK: - WellPattern Configuration
 
-enum InsioConfig {
+enum WellPatternConfig {
 
     // MARK: - OpenRouter AI Configuration
 
     enum OpenRouter {
-        /// Your OpenRouter API key
-        /// Get this from: https://openrouter.ai/keys
-        /// IMPORTANT: In production, use environment variables or secure storage
-        static let apiKey = "YOUR_OPENROUTER_API_KEY"
+        /// OpenRouter API key — never hardcode here.
+        /// Set OPENROUTER_API_KEY in Secrets.xcconfig (gitignored, never commit).
+        /// Build system injects it into Info.plist via INFOPLIST_KEY_OPENROUTER_API_KEY.
+        static var apiKey: String {
+            if let envKey = ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"], !envKey.isEmpty {
+                return envKey
+            }
+            if let plistKey = Bundle.main.object(forInfoDictionaryKey: "OPENROUTER_API_KEY") as? String,
+               !plistKey.isEmpty {
+                return plistKey
+            }
+            return "YOUR_OPENROUTER_API_KEY"
+        }
 
         /// The AI model to use for text enhancement
         /// Recommended models for natural language:
@@ -59,20 +68,12 @@ enum InsioConfig {
         // MARK: Plus Tier ($4.99/month)
 
         /// Product identifier for Plus monthly subscription
-        static let plusMonthlyProductID = "insio_plus_monthly"
-
-        /// Product identifier for Plus yearly subscription (NOT used at launch)
-        /// Kept for future use
-        static let plusYearlyProductID = "insio_plus_yearly"
+        static let plusMonthlyProductID = "wellpattern_plus_monthly"
 
         // MARK: Pro Tier ($12.99/month)
 
         /// Product identifier for Pro monthly subscription
-        static let proMonthlyProductID = "insio_pro_monthly"
-
-        /// Product identifier for Pro yearly subscription (NOT used at launch)
-        /// Kept for future use
-        static let proYearlyProductID = "insio_pro_yearly"
+        static let proMonthlyProductID = "wellpattern_pro_monthly"
 
         // MARK: Pricing (for display, actual prices come from App Store)
 
@@ -82,22 +83,15 @@ enum InsioConfig {
         /// Pro monthly price (display only - App Store is source of truth)
         static let proMonthlyPrice: Decimal = 12.99
 
-        // MARK: Product Sets (LAUNCH: Monthly only)
+        // MARK: Product Sets (LAUNCH: Monthly only — no yearly products)
 
-        /// All Plus subscription product identifiers (monthly only at launch)
-        static let plusProductIDs: Set<String> = [
-            plusMonthlyProductID
-            // plusYearlyProductID  // Commented out - not available at launch
-        ]
+        /// All Plus subscription product identifiers
+        static let plusProductIDs: Set<String> = [plusMonthlyProductID]
 
-        /// All Pro subscription product identifiers (monthly only at launch)
-        static let proProductIDs: Set<String> = [
-            proMonthlyProductID
-            // proYearlyProductID  // Commented out - not available at launch
-        ]
+        /// All Pro subscription product identifiers
+        static let proProductIDs: Set<String> = [proMonthlyProductID]
 
         /// All subscription product identifiers to request from App Store
-        /// LAUNCH: Monthly subscriptions only
         static let allProductIDs: Set<String> = [
             plusMonthlyProductID,
             proMonthlyProductID
@@ -127,6 +121,14 @@ enum InsioConfig {
         static let showDebugInfo = true
         #else
         static let showDebugInfo = false
+        #endif
+
+        /// DEBUG only: bypass Pro-tier check for workout AI so you can test without a subscription.
+        /// Set to false to test the real gate. Has no effect in release builds.
+        #if DEBUG
+        static let bypassWorkoutAITier = true
+        #else
+        static let bypassWorkoutAITier = false
         #endif
     }
 
@@ -160,21 +162,20 @@ enum InsioConfig {
     }
 
     // MARK: - Legal & Support
+    // TODO: Replace all four values below before App Store submission.
 
     enum Legal {
-        /// Privacy Policy URL
-        /// Update this with your actual privacy policy URL
-        static let privacyPolicyURL = URL(string: "https://insiohealth.com/privacy")!
+        /// Privacy Policy URL — TODO: replace with WellPattern privacy policy URL
+        static let privacyPolicyURL = URL(string: "https://pickle-wall-bb8.notion.site/Insio-Privacy-Policy-33d1ba29da8e80b1a00fc750457b6473")!
 
-        /// Terms of Service URL
-        /// Update this with your actual terms of service URL
-        static let termsOfServiceURL = URL(string: "https://insiohealth.com/terms")!
+        /// Terms of Service URL — TODO: replace with a SEPARATE WellPattern terms URL (must differ from privacy policy)
+        static let termsOfServiceURL = URL(string: "https://pickle-wall-bb8.notion.site/Insio-Privacy-Policy-33d1ba29da8e80b1a00fc750457b6473")!
 
-        /// Support email address
-        static let supportEmail = "support@insiohealth.com"
+        /// Support email — TODO: replace with WellPattern support address
+        static let supportEmail = "insiohealth@gmail.com"
 
-        /// App Store URL (update with actual App Store ID)
-        static let appStoreURL = URL(string: "https://apps.apple.com/app/insio-health/id0000000000")!
+        /// App Store URL — TODO: replace id0000000000 with real Apple ID after App Store Connect record is created
+        static let appStoreURL = URL(string: "https://apps.apple.com/app/wellpattern/id0000000000")!
     }
 
     // MARK: - AI Rules
@@ -196,7 +197,7 @@ enum InsioConfig {
 
 // MARK: - Environment Helper
 
-extension InsioConfig {
+extension WellPatternConfig {
 
     /// Check if running in debug/development mode
     static var isDebug: Bool {
@@ -217,7 +218,3 @@ extension InsioConfig {
     }
 }
 
-// MARK: - Legacy VeroConfig Compatibility
-
-/// Typealias for backward compatibility during migration
-typealias VeroConfig = InsioConfig

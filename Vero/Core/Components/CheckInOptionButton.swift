@@ -1,6 +1,6 @@
 //
 //  CheckInOptionButton.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Selection buttons for check-in flows
 //

@@ -1,6 +1,6 @@
 //
 //  StoreKitService.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Handles StoreKit 2 subscriptions for premium features.
 //  Supports 3-tier system: Free, Plus ($4.99/mo), Pro ($12.99/mo)
@@ -9,7 +9,7 @@
 //  SETUP:
 //  1. Configure products in App Store Connect
 //  2. Create a StoreKit Configuration file for testing
-//  3. Update product IDs in InsioConfig.swift
+//  3. Update product IDs in WellPatternConfig.swift
 //
 
 import Foundation
@@ -50,9 +50,6 @@ final class StoreKitService: ObservableObject {
     /// Error message for display
     @Published var errorMessage: String?
 
-    /// Whether running in simulator (StoreKit won't work properly)
-    @Published private(set) var isSimulator = false
-
     /// Whether products failed to load (no account, network error, etc.)
     @Published private(set) var productsUnavailable = false
 
@@ -61,7 +58,6 @@ final class StoreKitService: ObservableObject {
 
     enum ProductsUnavailableReason {
         case none
-        case simulator
         case noActiveAccount
         case networkError
         case configurationError
@@ -75,12 +71,6 @@ final class StoreKitService: ObservableObject {
     // MARK: - Initialization
 
     private init() {
-        // Check if running in simulator
-        #if targetEnvironment(simulator)
-        isSimulator = true
-        print("🛒 StoreKit: ⚠️ Running in SIMULATOR - StoreKit functionality limited")
-        #endif
-
         // Start listening for transactions
         updateListenerTask = listenForTransactions()
 
@@ -104,30 +94,25 @@ final class StoreKitService: ObservableObject {
         productsUnavailable = false
         productsUnavailableReason = .none
 
-        // Early exit for simulator with clear messaging
-        #if targetEnvironment(simulator)
-        print("🛒 StoreKit: ══════════════════════════════════════════════════")
-        print("🛒 StoreKit: ⚠️ SIMULATOR DETECTED")
-        print("🛒 StoreKit: StoreKit functionality is limited in simulator.")
-        print("🛒 StoreKit: Test purchases on a real device or TestFlight.")
-        print("🛒 StoreKit: ══════════════════════════════════════════════════")
-        productsUnavailable = true
-        productsUnavailableReason = .simulator
-        isLoading = false
-        return
-        #endif
-
         do {
+            #if DEBUG
             print("🛒 StoreKit: Loading products...")
-            let productIDs = InsioConfig.StoreKit.allProductIDs
+            #endif
+            let productIDs = WellPatternConfig.StoreKit.allProductIDs
+            #if DEBUG
             print("🛒 StoreKit: Requesting product IDs: \(productIDs)")
+            #endif
 
             let storeProducts = try await Product.products(for: productIDs)
 
             // Check if we got any products
             if storeProducts.isEmpty {
+                #if DEBUG
                 print("🛒 StoreKit: ⚠️ No products returned from App Store")
+                #endif
+                #if DEBUG
                 print("🛒 StoreKit: No active account or products not configured")
+                #endif
                 productsUnavailableReason = .noActiveAccount
                 productsUnavailable = true
                 isLoading = false
@@ -142,19 +127,29 @@ final class StoreKitService: ObservableObject {
             }
 
             // Separate by tier
-            plusProducts = products.filter { InsioConfig.StoreKit.plusProductIDs.contains($0.id) }
-            proProducts = products.filter { InsioConfig.StoreKit.proProductIDs.contains($0.id) }
+            plusProducts = products.filter { WellPatternConfig.StoreKit.plusProductIDs.contains($0.id) }
+            proProducts = products.filter { WellPatternConfig.StoreKit.proProductIDs.contains($0.id) }
 
+            #if DEBUG
             print("🛒 StoreKit: ✅ Loaded \(products.count) products")
+            #endif
+            #if DEBUG
             print("🛒 StoreKit: Plus products: \(plusProducts.count)")
+            #endif
+            #if DEBUG
             print("🛒 StoreKit: Pro products: \(proProducts.count)")
+            #endif
 
             for product in products {
+                #if DEBUG
                 print("🛒 StoreKit: - \(product.id): \(product.displayPrice)")
+                #endif
             }
 
         } catch {
+            #if DEBUG
             print("🛒 StoreKit: ❌ Failed to load products: \(error)")
+            #endif
 
             // Determine error type
             let errorString = String(describing: error).lowercased()
@@ -181,7 +176,9 @@ final class StoreKitService: ObservableObject {
         errorMessage = nil
 
         do {
+            #if DEBUG
             print("🛒 StoreKit: Purchasing \(product.id)...")
+            #endif
 
             let result = try await product.purchase()
 
@@ -196,29 +193,39 @@ final class StoreKitService: ObservableObject {
                 // Finish the transaction
                 await transaction.finish()
 
+                #if DEBUG
                 print("🛒 StoreKit: Purchase successful!")
+                #endif
                 isPurchasing = false
                 return true
 
             case .userCancelled:
+                #if DEBUG
                 print("🛒 StoreKit: User cancelled purchase")
+                #endif
                 isPurchasing = false
                 return false
 
             case .pending:
+                #if DEBUG
                 print("🛒 StoreKit: Purchase pending (Ask to Buy)")
+                #endif
                 errorMessage = "Purchase is pending approval"
                 isPurchasing = false
                 return false
 
             @unknown default:
+                #if DEBUG
                 print("🛒 StoreKit: Unknown purchase result")
+                #endif
                 isPurchasing = false
                 return false
             }
 
         } catch {
+            #if DEBUG
             print("🛒 StoreKit: Purchase failed: \(error)")
+            #endif
             errorMessage = "Purchase failed. Please try again."
             isPurchasing = false
             return false
@@ -229,7 +236,9 @@ final class StoreKitService: ObservableObject {
 
     /// Restore previous purchases
     func restorePurchases() async {
+        #if DEBUG
         print("🛒 StoreKit: Restoring purchases...")
+        #endif
         isLoading = true
         errorMessage = nil
 
@@ -241,14 +250,20 @@ final class StoreKitService: ObservableObject {
             await updateSubscriptionStatus()
 
             if premiumManager.isPaid {
+                #if DEBUG
                 print("🛒 StoreKit: Restore successful - \(premiumManager.currentTier.rawValue) active")
+                #endif
             } else {
+                #if DEBUG
                 print("🛒 StoreKit: Restore complete - no active subscription found")
+                #endif
                 errorMessage = "No active subscription found"
             }
 
         } catch {
+            #if DEBUG
             print("🛒 StoreKit: Restore failed: \(error)")
+            #endif
             errorMessage = "Unable to restore purchases. Please try again."
         }
 
@@ -259,7 +274,9 @@ final class StoreKitService: ObservableObject {
 
     /// Update the current subscription status
     func updateSubscriptionStatus() async {
+        #if DEBUG
         print("🛒 StoreKit: Updating subscription status...")
+        #endif
         premiumManager.startVerification()
 
         var highestTier: SubscriptionTier = .free
@@ -273,7 +290,7 @@ final class StoreKitService: ObservableObject {
                 let transaction = try checkVerified(result)
 
                 // Check if this is one of our subscription products
-                if InsioConfig.StoreKit.allProductIDs.contains(transaction.productID) {
+                if WellPatternConfig.StoreKit.allProductIDs.contains(transaction.productID) {
                     let transactionTier = PremiumManager.tier(for: transaction.productID)
 
                     // Keep track of highest tier
@@ -282,17 +299,23 @@ final class StoreKitService: ObservableObject {
                         activeProduct = products.first { $0.id == transaction.productID }
                         expirationDate = transaction.expirationDate
 
-                        // Check for trial
-                        if let offer = transaction.offer {
-                            isInTrial = offer.type == .introductory
+                        // Check for trial (transaction.offer requires iOS 17.2+)
+                        if #available(iOS 17.2, *) {
+                            if let offer = transaction.offer {
+                                isInTrial = offer.type == .introductory
+                            }
                         }
                     }
 
+                    #if DEBUG
                     print("🛒 StoreKit: Found subscription: \(transaction.productID) (\(transactionTier.rawValue))")
+                    #endif
                 }
 
             } catch {
+                #if DEBUG
                 print("🛒 StoreKit: Failed to verify transaction: \(error)")
+                #endif
             }
         }
 
@@ -308,9 +331,15 @@ final class StoreKitService: ObservableObject {
         purchasedSubscription = activeProduct
         premiumManager.endVerification()
 
+        #if DEBUG
         print("🛒 StoreKit: Current tier: \(highestTier.rawValue)")
+        #endif
+        #if DEBUG
         print("🛒 StoreKit: Expires: \(expirationDate?.description ?? "unknown")")
+        #endif
+        #if DEBUG
         print("🛒 StoreKit: Is trial: \(isInTrial)")
+        #endif
     }
 
     // MARK: - Transaction Listener
@@ -329,7 +358,9 @@ final class StoreKitService: ObservableObject {
                     await transaction.finish()
 
                 } catch {
+                    #if DEBUG
                     print("🛒 StoreKit: Transaction verification failed: \(error)")
+                    #endif
                 }
             }
         }
@@ -353,90 +384,19 @@ final class StoreKitService: ObservableObject {
         PremiumManager.tier(for: product.id)
     }
 
-    private func isYearly(_ product: Product) -> Bool {
-        product.id.contains("yearly")
-    }
-
     /// Get the monthly Plus product
     var plusMonthlyProduct: Product? {
-        products.first { $0.id == InsioConfig.StoreKit.plusMonthlyProductID }
-    }
-
-    /// Get the yearly Plus product
-    var plusYearlyProduct: Product? {
-        products.first { $0.id == InsioConfig.StoreKit.plusYearlyProductID }
+        products.first { $0.id == WellPatternConfig.StoreKit.plusMonthlyProductID }
     }
 
     /// Get the monthly Pro product
     var proMonthlyProduct: Product? {
-        products.first { $0.id == InsioConfig.StoreKit.proMonthlyProductID }
+        products.first { $0.id == WellPatternConfig.StoreKit.proMonthlyProductID }
     }
 
-    /// Get the yearly Pro product
-    var proYearlyProduct: Product? {
-        products.first { $0.id == InsioConfig.StoreKit.proYearlyProductID }
-    }
+    // MARK: - Legacy Compatibility (monthly-only launch — no yearly products)
 
-    /// Calculate savings percentage for yearly vs monthly
-    func yearlySavingsPercent(for tier: SubscriptionTier) -> Int? {
-        let monthly: Product?
-        let yearly: Product?
-
-        switch tier {
-        case .plus:
-            monthly = plusMonthlyProduct
-            yearly = plusYearlyProduct
-        case .pro:
-            monthly = proMonthlyProduct
-            yearly = proYearlyProduct
-        case .free:
-            return nil
-        }
-
-        guard let m = monthly, let y = yearly else { return nil }
-
-        let yearlyMonthlyEquivalent = y.price / 12
-        let savings = (1 - (yearlyMonthlyEquivalent / m.price)) * 100
-
-        return NSDecimalNumber(decimal: savings).intValue
-    }
-
-    /// Format price per month for yearly subscription
-    func yearlyPricePerMonth(for tier: SubscriptionTier) -> String? {
-        let yearly: Product?
-
-        switch tier {
-        case .plus:
-            yearly = plusYearlyProduct
-        case .pro:
-            yearly = proYearlyProduct
-        case .free:
-            return nil
-        }
-
-        guard let y = yearly else { return nil }
-
-        let monthlyPrice = y.price / 12
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.locale = y.priceFormatStyle.locale
-
-        return formatter.string(from: monthlyPrice as NSDecimalNumber)
-    }
-
-    // MARK: - Legacy Compatibility
-
-    /// Legacy: yearly product (maps to Pro yearly)
-    var yearlyProduct: Product? { proYearlyProduct }
-
-    /// Legacy: monthly product (maps to Pro monthly)
     var monthlyProduct: Product? { proMonthlyProduct }
-
-    /// Legacy: savings percent (maps to Pro)
-    var yearlySavingsPercent: Int? { yearlySavingsPercent(for: .pro) }
-
-    /// Legacy: yearly per month price (maps to Pro)
-    var yearlyPricePerMonth: String? { yearlyPricePerMonth(for: .pro) }
 }
 
 // MARK: - Product Extensions
@@ -488,9 +448,9 @@ extension Product {
 
     /// Tier for this product
     var tier: SubscriptionTier {
-        if InsioConfig.StoreKit.proProductIDs.contains(id) {
+        if WellPatternConfig.StoreKit.proProductIDs.contains(id) {
             return .pro
-        } else if InsioConfig.StoreKit.plusProductIDs.contains(id) {
+        } else if WellPatternConfig.StoreKit.plusProductIDs.contains(id) {
             return .plus
         } else {
             return .free

@@ -1,6 +1,6 @@
 //
 //  MetricsEngine.swift
-//  Vero
+//  WellPattern
 //
 //  SINGLE SOURCE OF TRUTH for all health metric computations.
 //

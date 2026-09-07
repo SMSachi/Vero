@@ -1,6 +1,6 @@
 //
 //  SupabaseConfig.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Supabase configuration and client initialization.
 //
@@ -55,25 +55,18 @@ enum SupabaseConfig {
             fatalError("SupabaseConfig: Invalid project URL: \(projectURL)")
         }
 
-        print("SupabaseConfig: ══════════════════════════════════════════════════")
-        print("SupabaseConfig: INITIALIZING SUPABASE CLIENT")
-        print("SupabaseConfig: ══════════════════════════════════════════════════")
-        print("SupabaseConfig: Project URL: \(projectURL)")
-        print("SupabaseConfig: Anon key length: \(anonKey.count) chars")
-        print("SupabaseConfig: Anon key prefix: \(String(anonKey.prefix(20)))...")
-
-        // Validate key format (Supabase uses JWT format "eyJ..." or publishable format "sb_...")
+        #if DEBUG
+        print("☁️ SupabaseConfig: ══════════════════════════════════════════")
+        print("☁️ SupabaseConfig: SUPABASE CONNECTION SANITY CHECK")
+        print("☁️ SupabaseConfig: host       = \(projectURL)")
+        print("☁️ SupabaseConfig: key prefix = \(String(anonKey.prefix(12)))...")
+        print("☁️ SupabaseConfig: configured = \(isConfigured)")
         let isValidFormat = anonKey.hasPrefix("eyJ") || anonKey.hasPrefix("sb_")
         if !isValidFormat {
-            print("SupabaseConfig: ⚠️ WARNING: Anon key format not recognized")
-            print("SupabaseConfig: ⚠️ Expected JWT (eyJ...) or publishable (sb_...) format")
-            print("SupabaseConfig: ⚠️ If auth/sync fails, verify your anon key from Supabase Dashboard")
-        } else {
-            print("SupabaseConfig: ✓ Anon key format valid")
+            print("☁️ SupabaseConfig: ⚠️ key format not recognized (expected eyJ... or sb_...)")
         }
-
-        print("SupabaseConfig: isConfigured: \(isConfigured)")
-        print("SupabaseConfig: ══════════════════════════════════════════════════")
+        print("☁️ SupabaseConfig: ══════════════════════════════════════════")
+        #endif
 
         return SupabaseClient(
             supabaseURL: url,

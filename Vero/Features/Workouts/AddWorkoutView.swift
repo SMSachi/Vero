@@ -1,6 +1,6 @@
 //
 //  AddWorkoutView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Manual workout entry for users without Apple Watch data.
 //  Supports common types, custom "Other" type, and flows through analytics pipeline.
@@ -199,9 +199,15 @@ struct AddWorkoutView: View {
     }
 
     private func saveWorkout() {
+        #if DEBUG
         print("🏋️ ════════════════════════════════════════════════════")
+        #endif
+        #if DEBUG
         print("🏋️ WORKOUT SAVE START")
+        #endif
+        #if DEBUG
         print("🏋️ ════════════════════════════════════════════════════")
+        #endif
 
         isSaving = true
 
@@ -238,7 +244,9 @@ struct AddWorkoutView: View {
         // STEP 1: LOCAL SAVE (minimal, synchronous)
         // ══════════════════════════════════════════════════════════════
         persistenceService.saveWorkout(workout)
+        #if DEBUG
         print("🏋️ LOCAL WORKOUT SAVE SUCCESS")
+        #endif
 
         // Auto-record check-in locally
         let feeling = mapEffortToFeeling(perceivedEffort)
@@ -253,7 +261,9 @@ struct AddWorkoutView: View {
         // STEP 2: DISMISS MODAL IMMEDIATELY (before any callbacks)
         // ══════════════════════════════════════════════════════════════
         isSaving = false
+        #if DEBUG
         print("🏋️ MODAL DISMISS TRIGGERED")
+        #endif
         dismiss()
 
         // ══════════════════════════════════════════════════════════════
@@ -261,7 +271,9 @@ struct AddWorkoutView: View {
         // ══════════════════════════════════════════════════════════════
         // Use DispatchQueue.main.async to ensure dismiss() completes first
         DispatchQueue.main.async { [onSave, workout] in
+            #if DEBUG
             print("🏋️ HOME REFRESH BROADCAST SENT")
+            #endif
             DataBroadcaster.shared.workoutSaved(id: workout.id)
             DataBroadcaster.shared.checkInSaved(workoutId: workout.id)
             onSave?(workout)
@@ -273,7 +285,6 @@ struct AddWorkoutView: View {
         let workoutToProcess = workout
         let feelingToSync = feeling
         let noteToSync = note.isEmpty ? nil : note
-        let isAuthenticated = authService.isAuthenticated
         let syncService = self.syncService
         let persistenceService = self.persistenceService
 
@@ -296,25 +307,33 @@ struct AddWorkoutView: View {
                 )
             }
 
-            // Cloud sync (if authenticated)
-            if isAuthenticated {
-                print("🏋️ BACKGROUND CLOUD SYNC START")
-
-                await syncService.syncWorkoutWithTimeout(workoutToProcess, timeout: 15)
-                await syncService.syncPostWorkoutCheckInWithTimeout(
-                    workoutId: workoutToProcess.id,
-                    feeling: feelingToSync,
-                    note: noteToSync,
-                    timeout: 10
-                )
-
-                print("🏋️ BACKGROUND CLOUD SYNC SUCCESS")
-            }
+            // Cloud sync — auth check is inside syncWorkoutWithTimeout/syncPostWorkoutCheckIn
+            // Do NOT capture isAuthenticated by value here; auth state may not be fully set
+            // by the time this detached task runs after a fresh sign-in.
+            #if DEBUG
+            print("🏋️ BACKGROUND CLOUD SYNC START")
+            #endif
+            await syncService.syncWorkoutWithTimeout(workoutToProcess, timeout: 15)
+            await syncService.syncPostWorkoutCheckInWithTimeout(
+                workoutId: workoutToProcess.id,
+                feeling: feelingToSync,
+                note: noteToSync,
+                timeout: 10
+            )
+            #if DEBUG
+            print("🏋️ BACKGROUND CLOUD SYNC COMPLETE")
+            #endif
         }
 
+        #if DEBUG
         print("🏋️ ════════════════════════════════════════════════════")
+        #endif
+        #if DEBUG
         print("🏋️ WORKOUT SAVE FLOW COMPLETE (modal dismissed)")
+        #endif
+        #if DEBUG
         print("🏋️ ════════════════════════════════════════════════════")
+        #endif
     }
 
     private func saveCustomType(_ typeName: String) {

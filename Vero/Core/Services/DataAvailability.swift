@@ -1,6 +1,6 @@
 //
 //  DataAvailability.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Centralized data availability tracking for honest UI states.
 //  Determines what data is actually available vs. what would be guessing.

@@ -1,13 +1,13 @@
 //
-//  WhatInsioDoesView.swift
-//  Insio Health
+//  WhatWellPatternDoesView.swift
+//  WellPattern Health
 //
 //  How it works - unified design system
 //
 
 import SwiftUI
 
-struct WhatInsioDoesView: View {
+struct WhatWellPatternDoesView: View {
     @EnvironmentObject var state: OnboardingState
 
     private let steps: [(icon: String, title: String, description: String, color: Color)] = [
@@ -151,6 +151,6 @@ private struct LargeStepCard: View {
 }
 
 #Preview {
-    WhatInsioDoesView()
+    WhatWellPatternDoesView()
         .environmentObject(OnboardingState())
 }

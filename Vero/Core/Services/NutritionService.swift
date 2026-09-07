@@ -1,6 +1,6 @@
 //
 //  NutritionService.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Service for managing nutrition/water logging.
 //  Provides simple CRUD operations and aggregation for trends.

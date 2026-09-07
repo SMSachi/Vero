@@ -1,6 +1,6 @@
 //
 //  SleepLoggingView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Dedicated sleep logging screen with visual feedback.
 //  More immersive experience than the generic daily log.
@@ -226,9 +226,11 @@ struct SleepLoggingView: View {
                     quickHourButton("7h") { sleepHours = 7 }
                     quickHourButton("8h") { sleepHours = 8 }
                     quickHourButton("9h") { sleepHours = 9 }
+                    quickHourButton("10h") { sleepHours = 10 }
+                    quickHourButton("11h") { sleepHours = 11 }
                 }
 
-                Slider(value: $sleepHours, in: 0...12, step: 0.5)
+                Slider(value: $sleepHours, in: 0...14, step: 0.5)
                     .tint(AppColors.olive)
 
                 HStack {
@@ -236,7 +238,7 @@ struct SleepLoggingView: View {
                     Spacer()
                     Text("\(Int(dailyGoal)) hrs goal")
                     Spacer()
-                    Text("12 hrs")
+                    Text("14 hrs")
                 }
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(AppColors.textTertiary)
@@ -317,7 +319,7 @@ struct SleepLoggingView: View {
                 energyLevel: .moderate,
                 restingHeartRate: nil,
                 hrvScore: nil,
-                readinessScore: 50
+                readinessScore: nil
             )
         }
 

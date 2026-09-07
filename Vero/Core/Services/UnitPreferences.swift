@@ -1,6 +1,6 @@
 //
 //  UnitPreferences.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Global unit preferences for metric/imperial system.
 //  Affects: weight (kg/lb), distance (km/mi), hydration (L/oz)
@@ -203,8 +203,8 @@ final class UnitPreferences: ObservableObject {
     /// Get volume range for slider based on current unit
     var volumeSliderRange: ClosedRange<Double> {
         switch unitSystem {
-        case .metric: return 0...5  // liters
-        case .imperial: return 0...170  // fl oz (approx 5L)
+        case .metric: return 0...10  // liters — raised from 5L; athletes and hot climates exceed 5L
+        case .imperial: return 0...340  // fl oz (approx 10L)
         }
     }
 

@@ -1,6 +1,6 @@
 //
 //  HealthKitService.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  HealthKit integration service for reading workout and health data.
 //  This service handles all HealthKit authorization and data fetching.
@@ -205,29 +205,49 @@ final class HealthKitService: ObservableObject {
     // MARK: - Initialization
 
     private init() {
+        #if DEBUG
         print("🏥 HealthKit: ══════════════════════════════════════════════════")
+        #endif
+        #if DEBUG
         print("🏥 HealthKit: SERVICE INITIALIZING")
+        #endif
+        #if DEBUG
         print("🏥 HealthKit: ══════════════════════════════════════════════════")
+        #endif
+        #if DEBUG
         print("🏥 HealthKit: isHealthDataAvailable = \(HKHealthStore.isHealthDataAvailable())")
+        #endif
+        #if DEBUG
         print("🏥 HealthKit: isSimulator = \(Self.isSimulator)")
+        #endif
 
         // IMPORTANT: On simulator, treat HealthKit as unavailable even though
         // isHealthDataAvailable() returns true on iOS 17+. The simulator's
         // HealthKit database is non-functional and queries will hang indefinitely.
         if Self.isSimulator {
+            #if DEBUG
             print("🏥 HealthKit: ⚠️ SIMULATOR DETECTED - marking HealthKit as unavailable")
+            #endif
+            #if DEBUG
             print("🏥 HealthKit: ⚠️ This prevents hangs from non-functional HealthKit queries")
+            #endif
             self.healthStore = nil
             self.authorizationStatus = .unavailable
         } else if HKHealthStore.isHealthDataAvailable() {
             self.healthStore = HKHealthStore()
+            #if DEBUG
             print("🏥 HealthKit: ✅ HKHealthStore created successfully")
+            #endif
         } else {
             self.healthStore = nil
             self.authorizationStatus = .unavailable
+            #if DEBUG
             print("🏥 HealthKit: ❌ HealthKit unavailable on this device")
+            #endif
         }
+        #if DEBUG
         print("🏥 HealthKit: ══════════════════════════════════════════════════")
+        #endif
     }
 
     // MARK: - Authorization
@@ -237,53 +257,79 @@ final class HealthKitService: ObservableObject {
     ///
     /// - Returns: True if authorization was granted (at least partially), false otherwise
     func requestAuthorization() async -> Bool {
+        #if DEBUG
         print("🏥 HealthKit: ══════════════════════════════════════════════════")
+        #endif
+        #if DEBUG
         print("🏥 HealthKit: AUTHORIZATION REQUEST")
+        #endif
+        #if DEBUG
         print("🏥 HealthKit: ══════════════════════════════════════════════════")
+        #endif
 
         guard let healthStore = healthStore else {
+            #if DEBUG
             print("🏥 HealthKit: ❌ ABORT - HealthStore is nil (unavailable)")
+            #endif
             authorizationStatus = .unavailable
             lastError = "HealthKit is not available on this device"
             return false
         }
 
+        #if DEBUG
         print("🏥 HealthKit: Requesting authorization for \(readTypes.count) data types...")
+        #endif
+        #if DEBUG
         print("🏥 HealthKit: Types: \(readTypes.map { $0.identifier.components(separatedBy: ".").last ?? $0.identifier })")
+        #endif
 
         do {
             // Request authorization - we only need READ access, no WRITE access
             // The empty set for toShare means we won't write any data
+            #if DEBUG
             print("🏥 HealthKit: 🚀 Calling healthStore.requestAuthorization()...")
+            #endif
 
             try await healthStore.requestAuthorization(toShare: [], read: readTypes)
 
+            #if DEBUG
             print("🏥 HealthKit: ✅ Authorization request completed (no error thrown)")
+            #endif
 
             // IMPORTANT: HealthKit requestAuthorization completes successfully even if user denies
             // We need to verify READ access by attempting to fetch data
+            #if DEBUG
             print("🏥 HealthKit: 🔍 Verifying READ access by attempting data fetch...")
+            #endif
 
             let hasAccess = await verifyReadAccess()
 
             if hasAccess {
+                #if DEBUG
                 print("🏥 HealthKit: ✅ READ access VERIFIED - data fetch succeeded")
+                #endif
                 authorizationStatus = .authorized
                 hasVerifiedReadAccess = true
                 lastError = nil
                 return true
             } else {
+                #if DEBUG
                 print("🏥 HealthKit: ⚠️ READ access NOT verified - user may have denied or no data exists")
+                #endif
                 // Don't set to denied yet - could just be no data
                 // Try checking if we can at least query
                 let canQuery = await checkCanQuery()
                 if canQuery {
+                    #if DEBUG
                     print("🏥 HealthKit: ℹ️ Can query but no data - marking as authorized")
+                    #endif
                     authorizationStatus = .authorized
                     hasVerifiedReadAccess = true
                     return true
                 } else {
+                    #if DEBUG
                     print("🏥 HealthKit: ❌ Cannot query - likely denied")
+                    #endif
                     authorizationStatus = .denied
                     hasVerifiedReadAccess = false
                     return false
@@ -291,9 +337,15 @@ final class HealthKitService: ObservableObject {
             }
 
         } catch {
+            #if DEBUG
             print("🏥 HealthKit: ❌ Authorization ERROR: \(error)")
+            #endif
+            #if DEBUG
             print("🏥 HealthKit: Error type: \(type(of: error))")
+            #endif
+            #if DEBUG
             print("🏥 HealthKit: Localized: \(error.localizedDescription)")
+            #endif
             authorizationStatus = .denied
             hasVerifiedReadAccess = false
             lastError = error.localizedDescription
@@ -318,7 +370,9 @@ final class HealthKitService: ObservableObject {
                 sortDescriptors: [sortDescriptor]
             ) { [weak self] _, samples, error in
                 if let error = error {
+                    #if DEBUG
                     print("🏥 HealthKit: verifyReadAccess error: \(error.localizedDescription)")
+                    #endif
                     // Check if it's a permission error
                     let errorString = error.localizedDescription.lowercased()
                     if errorString.contains("authorization") || errorString.contains("denied") || errorString.contains("permission") {
@@ -333,12 +387,16 @@ final class HealthKitService: ObservableObject {
                 // Query succeeded - we have read access
                 let count = samples?.count ?? 0
                 let foundData = count > 0
+                #if DEBUG
                 print("🏥 HealthKit: verifyReadAccess succeeded - found \(count) workout(s)")
+                #endif
 
                 // Update hasWorkoutData on main thread
                 Task { @MainActor in
                     self?.hasWorkoutData = foundData
+                    #if DEBUG
                     print("🏥 HealthKit: hasWorkoutData = \(foundData)")
+                    #endif
                 }
 
                 continuation.resume(returning: true)
@@ -385,10 +443,14 @@ final class HealthKitService: ObservableObject {
     /// This attempts to verify actual READ access since HealthKit doesn't provide
     /// a direct way to check READ authorization.
     func checkAuthorizationStatus() {
+        #if DEBUG
         print("🏥 HealthKit: checkAuthorizationStatus() called")
+        #endif
 
         guard let healthStore = healthStore else {
+            #if DEBUG
             print("🏥 HealthKit: HealthStore is nil - marking as unavailable")
+            #endif
             authorizationStatus = .unavailable
             return
         }
@@ -398,7 +460,9 @@ final class HealthKitService: ObservableObject {
         // or attempt a data fetch
 
         if hasVerifiedReadAccess {
+            #if DEBUG
             print("🏥 HealthKit: Previously verified read access - status: authorized")
+            #endif
             authorizationStatus = .authorized
             return
         }
@@ -406,17 +470,23 @@ final class HealthKitService: ObservableObject {
         // Check if we've ever requested authorization
         // This is a heuristic - if the app has requested before, HealthKit remembers
         let workoutWriteStatus = healthStore.authorizationStatus(for: HKObjectType.workoutType())
+        #if DEBUG
         print("🏥 HealthKit: Workout WRITE status: \(workoutWriteStatus.rawValue)")
+        #endif
 
         // For READ-only apps, we can't rely on write status
         // Best we can do is check if we haven't requested yet
         // Once requested, we need to verify via data fetch
         if workoutWriteStatus == .notDetermined {
+            #if DEBUG
             print("🏥 HealthKit: Authorization not yet requested - status: notDetermined")
+            #endif
             authorizationStatus = .notDetermined
         } else {
             // We've requested before - need to verify read access
+            #if DEBUG
             print("🏥 HealthKit: Authorization was requested before - need to verify")
+            #endif
             // Don't change status here - let the caller use refreshAuthorizationStatus() if needed
         }
     }
@@ -424,12 +494,20 @@ final class HealthKitService: ObservableObject {
     /// Refresh authorization status by attempting a data fetch.
     /// Call this when returning from iOS Settings or when status might have changed.
     func refreshAuthorizationStatus() async {
+        #if DEBUG
         print("🏥 HealthKit: ══════════════════════════════════════════════════")
+        #endif
+        #if DEBUG
         print("🏥 HealthKit: REFRESHING AUTHORIZATION STATUS")
+        #endif
+        #if DEBUG
         print("🏥 HealthKit: ══════════════════════════════════════════════════")
+        #endif
 
         guard healthStore != nil else {
+            #if DEBUG
             print("🏥 HealthKit: HealthStore is nil - marking as unavailable")
+            #endif
             authorizationStatus = .unavailable
             hasWorkoutData = false
             return
@@ -438,20 +516,32 @@ final class HealthKitService: ObservableObject {
         let hasAccess = await verifyReadAccess()
 
         if hasAccess {
+            #if DEBUG
             print("🏥 HealthKit: ✅ Refresh: READ access confirmed")
+            #endif
             authorizationStatus = .authorized
             hasVerifiedReadAccess = true
         } else {
+            #if DEBUG
             print("🏥 HealthKit: ❌ Refresh: READ access denied or unavailable")
+            #endif
             authorizationStatus = .denied
             hasVerifiedReadAccess = false
             hasWorkoutData = false
         }
 
+        #if DEBUG
         print("🏥 HealthKit: Final status: \(authorizationStatus.rawValue)")
+        #endif
+        #if DEBUG
         print("🏥 HealthKit: Connection state: \(connectionState.rawValue)")
+        #endif
+        #if DEBUG
         print("🏥 HealthKit: Has workout data: \(hasWorkoutData)")
+        #endif
+        #if DEBUG
         print("🏥 HealthKit: ══════════════════════════════════════════════════")
+        #endif
     }
 
     // MARK: - Query Timeout
@@ -490,11 +580,15 @@ final class HealthKitService: ObservableObject {
     /// Returns nil if no workouts exist or HealthKit is unavailable.
     func fetchMostRecentWorkout() async -> HKWorkout? {
         guard let healthStore = healthStore else {
+            #if DEBUG
             print("🏥 HealthKit: fetchMostRecentWorkout - healthStore is nil, returning nil")
+            #endif
             return nil
         }
 
+        #if DEBUG
         print("🏥 HealthKit: fetchMostRecentWorkout - starting query...")
+        #endif
 
         return await executeQueryWithTimeout({
             await withCheckedContinuation { continuation in
@@ -508,13 +602,17 @@ final class HealthKitService: ObservableObject {
                     sortDescriptors: [sortDescriptor]
                 ) { _, samples, error in
                     if let error = error {
+                        #if DEBUG
                         print("🏥 HealthKit: fetchMostRecentWorkout - error: \(error.localizedDescription)")
+                        #endif
                         continuation.resume(returning: nil)
                         return
                     }
 
                     let workout = samples?.first as? HKWorkout
+                    #if DEBUG
                     print("🏥 HealthKit: fetchMostRecentWorkout - found: \(workout != nil)")
+                    #endif
                     continuation.resume(returning: workout)
                 }
 
@@ -528,11 +626,15 @@ final class HealthKitService: ObservableObject {
     /// - Returns: Array of HKWorkout objects, empty if none found
     func fetchRecentWorkouts(limit: Int = 10) async -> [HKWorkout] {
         guard let healthStore = healthStore else {
+            #if DEBUG
             print("🏥 HealthKit: fetchRecentWorkouts - healthStore is nil, returning []")
+            #endif
             return []
         }
 
+        #if DEBUG
         print("🏥 HealthKit: fetchRecentWorkouts - starting query for \(limit) workouts...")
+        #endif
 
         let result = await executeQueryWithTimeout({
             await withCheckedContinuation { (continuation: CheckedContinuation<[HKWorkout]?, Never>) in
@@ -546,13 +648,17 @@ final class HealthKitService: ObservableObject {
                     sortDescriptors: [sortDescriptor]
                 ) { _, samples, error in
                     if let error = error {
+                        #if DEBUG
                         print("🏥 HealthKit: fetchRecentWorkouts - error: \(error.localizedDescription)")
+                        #endif
                         continuation.resume(returning: [])
                         return
                     }
 
                     let workouts = samples as? [HKWorkout] ?? []
+                    #if DEBUG
                     print("🏥 HealthKit: fetchRecentWorkouts - found \(workouts.count) workouts")
+                    #endif
                     continuation.resume(returning: workouts)
                 }
 
@@ -566,20 +672,20 @@ final class HealthKitService: ObservableObject {
     /// Map an HKWorkout to the app's Workout model.
     /// Fetches additional statistics (heart rate, distance) from HealthKit.
     func mapWorkout(_ hkWorkout: HKWorkout) async -> Workout {
-        // Fetch heart rate data for this workout
+        // Fetch heart rate data for this workout (nil when workout has no HR samples)
         let heartRateStats = await fetchHeartRateStats(for: hkWorkout)
 
         // Map HKWorkoutActivityType to our WorkoutType
         let workoutType = mapWorkoutType(hkWorkout.workoutActivityType)
 
-        // Calculate intensity based on heart rate and duration
+        // Calculate intensity — pass 0 only for the duration-based fallback when HR is absent
         let intensity = calculateIntensity(
-            averageHR: heartRateStats.average,
-            maxHR: heartRateStats.max,
+            averageHR: heartRateStats?.average ?? 0,
+            maxHR: heartRateStats?.max ?? 0,
             duration: hkWorkout.duration
         )
 
-        // Get calories - prefer activeEnergyBurned, fallback to totalEnergyBurned
+        // Get calories — prefer activeEnergyBurned, fallback to totalEnergyBurned
         let calories: Int
         if let activeEnergy = hkWorkout.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity() {
             calories = Int(activeEnergy.doubleValue(for: .kilocalorie()))
@@ -601,7 +707,7 @@ final class HealthKitService: ObservableObject {
         let interpretation = generateWorkoutInterpretation(
             type: workoutType,
             duration: hkWorkout.duration,
-            averageHR: heartRateStats.average,
+            averageHR: heartRateStats?.average ?? 0,
             intensity: intensity
         )
 
@@ -612,8 +718,8 @@ final class HealthKitService: ObservableObject {
             endDate: hkWorkout.endDate,
             duration: hkWorkout.duration,
             calories: calories,
-            averageHeartRate: heartRateStats.average,
-            maxHeartRate: heartRateStats.max,
+            averageHeartRate: heartRateStats?.average,
+            maxHeartRate: heartRateStats?.max,
             intensity: intensity,
             interpretation: interpretation,
             recoveryHeartRate: nil, // Would need additional query
@@ -641,10 +747,11 @@ final class HealthKitService: ObservableObject {
     }
 
     /// Fetch heart rate statistics for a specific workout.
-    private func fetchHeartRateStats(for workout: HKWorkout) async -> HeartRateStats {
+    /// Returns nil when HealthKit is unavailable, the query fails, or the workout has no HR samples.
+    private func fetchHeartRateStats(for workout: HKWorkout) async -> HeartRateStats? {
         guard let healthStore = healthStore,
               let heartRateType = HKQuantityType.quantityType(forIdentifier: .heartRate) else {
-            return HeartRateStats(average: 0, max: 0, min: 0)
+            return nil
         }
 
         let predicate = HKQuery.predicateForSamples(
@@ -659,17 +766,21 @@ final class HealthKitService: ObservableObject {
                 quantitySamplePredicate: predicate,
                 options: [.discreteAverage, .discreteMax, .discreteMin]
             ) { _, statistics, error in
-                if let error = error {
-                    print("Error fetching heart rate: \(error.localizedDescription)")
-                    continuation.resume(returning: HeartRateStats(average: 0, max: 0, min: 0))
+                if error != nil {
+                    continuation.resume(returning: nil)
                     return
                 }
 
                 let unit = HKUnit.count().unitDivided(by: .minute())
-                let average = Int(statistics?.averageQuantity()?.doubleValue(for: unit) ?? 0)
-                let max = Int(statistics?.maximumQuantity()?.doubleValue(for: unit) ?? 0)
-                let min = Int(statistics?.minimumQuantity()?.doubleValue(for: unit) ?? 0)
+                guard let avgQuantity = statistics?.averageQuantity() else {
+                    // Workout had no heart rate samples — return nil rather than fabricated zeros
+                    continuation.resume(returning: nil)
+                    return
+                }
 
+                let average = Int(avgQuantity.doubleValue(for: unit))
+                let max = Int(statistics?.maximumQuantity()?.doubleValue(for: unit) ?? Double(average))
+                let min = Int(statistics?.minimumQuantity()?.doubleValue(for: unit) ?? Double(average))
                 continuation.resume(returning: HeartRateStats(average: average, max: max, min: min))
             }
 
@@ -695,7 +806,9 @@ final class HealthKitService: ObservableObject {
                 sortDescriptors: [sortDescriptor]
             ) { _, samples, error in
                 if let error = error {
+                    #if DEBUG
                     print("Error fetching resting HR: \(error.localizedDescription)")
+                    #endif
                     continuation.resume(returning: nil)
                     return
                 }
@@ -707,6 +820,9 @@ final class HealthKitService: ObservableObject {
 
                 let unit = HKUnit.count().unitDivided(by: .minute())
                 let value = Int(sample.quantity.doubleValue(for: unit))
+                #if DEBUG
+                print("🏥 HealthKit: fetchRestingHeartRate → \(value) bpm")
+                #endif
                 continuation.resume(returning: value)
             }
 
@@ -734,7 +850,9 @@ final class HealthKitService: ObservableObject {
                 sortDescriptors: [sortDescriptor]
             ) { _, samples, error in
                 if let error = error {
+                    #if DEBUG
                     print("Error fetching HRV: \(error.localizedDescription)")
+                    #endif
                     continuation.resume(returning: nil)
                     return
                 }
@@ -746,6 +864,9 @@ final class HealthKitService: ObservableObject {
 
                 // HRV SDNN is measured in milliseconds
                 let value = sample.quantity.doubleValue(for: .secondUnit(with: .milli))
+                #if DEBUG
+                print("🏥 HealthKit: fetchHRV → \(String(format: "%.1f", value)) ms SDNN")
+                #endif
                 continuation.resume(returning: value)
             }
 
@@ -796,7 +917,9 @@ final class HealthKitService: ObservableObject {
                 sortDescriptors: [sortDescriptor]
             ) { _, samples, error in
                 if let error = error {
+                    #if DEBUG
                     print("Error fetching sleep: \(error.localizedDescription)")
+                    #endif
                     continuation.resume(returning: nil)
                     return
                 }
@@ -820,6 +943,9 @@ final class HealthKitService: ObservableObject {
                 }
 
                 let totalHours = totalSleepSeconds / 3600
+                #if DEBUG
+                print("🏥 HealthKit: fetchLastNightSleep → samples=\(sleepSamples.count), asleep=\(String(format: "%.2f", totalHours)) hrs")
+                #endif
 
                 // Determine sleep quality based on duration
                 let quality: SleepQuality
@@ -855,7 +981,9 @@ final class HealthKitService: ObservableObject {
                 options: .cumulativeSum
             ) { _, statistics, error in
                 if let error = error {
+                    #if DEBUG
                     print("Error fetching water: \(error.localizedDescription)")
+                    #endif
                     continuation.resume(returning: nil)
                     return
                 }
@@ -867,6 +995,9 @@ final class HealthKitService: ObservableObject {
 
                 // Convert to liters
                 let liters = sum.doubleValue(for: .liter())
+                #if DEBUG
+                print("🏥 HealthKit: fetchTodayWaterIntake → \(String(format: "%.3f", liters)) L")
+                #endif
                 continuation.resume(returning: liters)
             }
 
@@ -881,27 +1012,9 @@ final class HealthKitService: ObservableObject {
         let protein: Double // grams
     }
 
-    /// Fetch today's nutrition data (calories, carbs, protein).
-    func fetchTodayNutrition() async -> NutritionData? {
-        guard healthStore != nil else { return nil }
-
-        // Fetch values sequentially to avoid Swift 6 sendability warnings
-        // (NSPredicate is not Sendable and cannot be captured in async let)
-        let calories = await fetchNutrientSum(.dietaryEnergyConsumed, unit: .kilocalorie())
-        let carbs = await fetchNutrientSum(.dietaryCarbohydrates, unit: .gram())
-        let protein = await fetchNutrientSum(.dietaryProtein, unit: .gram())
-
-        // Return nil if we have no data at all
-        if calories == nil && carbs == nil && protein == nil {
-            return nil
-        }
-
-        return NutritionData(
-            caloriesConsumed: Int(calories ?? 0),
-            carbohydrates: carbs ?? 0,
-            protein: protein ?? 0
-        )
-    }
+    // fetchTodayNutrition() removed: it was never called in production and used
+    // ?? 0 fallbacks that would fabricate zero nutrition values. Nutrition is
+    // handled by manual logging in NutritionLoggingView / NutritionService.
 
     /// Helper to fetch a single nutrient sum.
     private func fetchNutrientSum(
@@ -923,7 +1036,9 @@ final class HealthKitService: ObservableObject {
                 options: .cumulativeSum
             ) { _, statistics, error in
                 if let error = error {
+                    #if DEBUG
                     print("Error fetching \(identifier): \(error.localizedDescription)")
+                    #endif
                     continuation.resume(returning: nil)
                     return
                 }
@@ -1017,6 +1132,80 @@ final class HealthKitService: ObservableObject {
             return "Challenging \(type.rawValue.lowercased()) with elevated heart rate. Allow adequate recovery."
         case .max:
             return "Intense effort! Your body worked hard. Prioritize rest and nutrition today."
+        }
+    }
+}
+
+// MARK: - Developer Diagnostic Summary
+
+extension HealthKitService {
+
+    /// Print a full HealthKit diagnostic summary to the console.
+    /// Call once after authorization completes to verify what HealthKit is providing.
+    ///
+    /// TYPES REQUESTED vs ACTUALLY FETCHED:
+    ///   workouts              requested ✅  fetched ✅  → HomeViewModel.latestWorkout / recentWorkouts
+    ///   heartRate             requested ✅  fetched ✅  → Workout.averageHeartRate / maxHeartRate (per-workout stats query)
+    ///   restingHeartRate      requested ✅  fetched ✅  → DailyContext.restingHeartRate → readinessScore
+    ///   heartRateVariability  requested ✅  fetched ✅  → DailyContext.hrvScore → stressLevel / readinessScore
+    ///   sleepAnalysis         requested ✅  fetched ✅  → DailyContext.sleepHours / sleepQuality → readinessScore
+    ///   activeEnergyBurned    requested ✅  fetched ✅  → Workout.calories (via workout.statistics)
+    ///   distanceWalkingRun    requested ✅  fetched ✅  → Workout.distance (via workout.totalDistance)
+    ///   dietaryWater          requested ✅  fetched ✅  → HomeViewModel.waterIntake
+    ///   dietaryEnergyConsumed requested ✅  fetched ⚠️  → fetchTodayNutrition() defined but NEVER CALLED
+    ///   dietaryCarbohydrates  requested ✅  fetched ⚠️  → fetchTodayNutrition() defined but NEVER CALLED
+    ///   dietaryProtein        requested ✅  fetched ⚠️  → fetchTodayNutrition() defined but NEVER CALLED
+    ///   bodyMass (weight)     NOT requested ❌          → weight is manual-entry only (DailyContext.weightKg)
+    func printDiagnosticSummary() async {
+        #if DEBUG
+        print("🏥 HealthKit: ══════════ DIAGNOSTIC SUMMARY ══════════════════")
+        print("🏥 HealthKit: available         = \(isHealthKitAvailable)")
+        print("🏥 HealthKit: isSimulator       = \(isSimulator)")
+        print("🏥 HealthKit: authStatus        = \(authorizationStatus.rawValue)")
+        print("🏥 HealthKit: verifiedRead      = \(hasVerifiedReadAccess)")
+        print("🏥 HealthKit: hasWorkoutData    = \(hasWorkoutData)")
+
+        guard healthStore != nil && !isSimulator && authorizationStatus == .authorized else {
+            print("🏥 HealthKit: ⚠️ Skipping fetch counts — not authorized or simulator")
+            print("🏥 HealthKit: ══════════════════════════════════════════════════")
+            return
+        }
+
+        let workouts = await fetchRecentWorkouts(limit: 500)
+        print("🏥 HealthKit: workouts fetched  = \(workouts.count)")
+
+        let sleepCount = await countSamples(type: HKCategoryType(.sleepAnalysis), days: 30)
+        print("🏥 HealthKit: sleep samples     = \(sleepCount) (last 30 days)")
+
+        let water = await fetchTodayWaterIntake()
+        print("🏥 HealthKit: water today       = \(water.map { String(format: "%.3f L", $0) } ?? "nil (none logged)")")
+
+        let rhr = await fetchRestingHeartRate()
+        print("🏥 HealthKit: resting HR        = \(rhr.map { "\($0) bpm" } ?? "nil (no data)")")
+
+        let hrv = await fetchHRV()
+        print("🏥 HealthKit: HRV (SDNN)        = \(hrv.map { String(format: "%.1f ms", $0) } ?? "nil (no data)")")
+
+        print("🏥 HealthKit: weight            = ❌ NOT read from HealthKit — manual entry only")
+        print("🏥 HealthKit: nutrition (carbs/cal/protein) = ⚠️ fetchTodayNutrition() exists but is NEVER CALLED")
+        print("🏥 HealthKit: ══════════════════════════════════════════════════")
+        #endif
+    }
+
+    private func countSamples(type: HKSampleType, days: Int) async -> Int {
+        guard let healthStore = healthStore else { return 0 }
+        let start = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: type,
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: nil
+            ) { _, samples, _ in
+                continuation.resume(returning: samples?.count ?? 0)
+            }
+            healthStore.execute(query)
         }
     }
 }

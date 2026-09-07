@@ -1,6 +1,6 @@
 //
-//  VeroScreenLayout.swift
-//  Insio Health
+//  WellPatternScreenLayout.swift
+//  WellPattern Health
 //
 //  Unified layout system for all screens
 //  Structure: Header → Content → Footer (optional)
@@ -13,7 +13,7 @@ import SwiftUI
 /// Reusable screen layout wrapper that enforces consistent structure
 /// Usage:
 /// ```
-/// VeroScreenLayout(
+/// WellPatternScreenLayout(
 ///     title: "Goals",
 ///     subtitle: "Select all that apply"
 /// ) {
@@ -22,7 +22,7 @@ import SwiftUI
 ///     PrimaryButton("Continue") { }
 /// }
 /// ```
-struct VeroScreenLayout<Content: View, Footer: View>: View {
+struct WellPatternScreenLayout<Content: View, Footer: View>: View {
     let title: String
     let subtitle: String?
     let showBackButton: Bool
@@ -142,7 +142,7 @@ struct VeroScreenLayout<Content: View, Footer: View>: View {
 
 // MARK: - Without Footer
 
-extension VeroScreenLayout where Footer == EmptyView {
+extension WellPatternScreenLayout where Footer == EmptyView {
     init(
         title: String,
         subtitle: String? = nil,
@@ -162,7 +162,7 @@ extension VeroScreenLayout where Footer == EmptyView {
 // MARK: - Scrolling Content Layout (for main tabs)
 
 /// Layout for main tab screens where content scrolls under a fixed header
-struct VeroScrollLayout<Content: View>: View {
+struct WellPatternScrollLayout<Content: View>: View {
     let title: String
     let subtitle: String?
     let trailing: AnyView?
@@ -249,14 +249,14 @@ struct VeroScrollLayout<Content: View>: View {
 // MARK: - Preview
 
 #Preview("Screen Layout") {
-    VeroScreenLayout(
+    WellPatternScreenLayout(
         title: "What are your goals?",
         subtitle: "Select all that apply",
         showBackButton: true,
         backAction: {}
     ) {
         ForEach(0..<4, id: \.self) { index in
-            VeroCard {
+            WellPatternCard {
                 HStack {
                     Text("Goal \(index + 1)")
                         .font(.system(size: 16, weight: .semibold))
@@ -270,12 +270,12 @@ struct VeroScrollLayout<Content: View>: View {
 }
 
 #Preview("Scroll Layout") {
-    VeroScrollLayout(
+    WellPatternScrollLayout(
         title: "Trends",
         subtitle: "Your patterns this month"
     ) {
         ForEach(0..<5, id: \.self) { index in
-            VeroCard {
+            WellPatternCard {
                 Text("Section \(index + 1)")
                     .font(.system(size: 16, weight: .semibold))
             }

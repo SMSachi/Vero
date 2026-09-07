@@ -1,6 +1,6 @@
 //
 //  TrendInsight.swift
-//  Insio Health
+//  WellPattern Health
 //
 
 import Foundation

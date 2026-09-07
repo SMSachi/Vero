@@ -1,6 +1,6 @@
 //
 //  DailyContext.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Extended daily_contexts data model for Supabase sync.
 //  Includes sleep, water, nutrition, and weight (if goal == weight_loss).
@@ -23,7 +23,7 @@ struct DailyContext: Identifiable, Codable {
     // MARK: - Biometrics
     var restingHeartRate: Int?
     var hrvScore: Double?
-    var readinessScore: Int
+    var readinessScore: Int?
 
     // MARK: - Nutrition Data (extended)
     var waterIntakeMl: Int?

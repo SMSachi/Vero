@@ -1,6 +1,6 @@
 //
 //  CheckIn.swift
-//  Insio Health
+//  WellPattern Health
 //
 
 import Foundation

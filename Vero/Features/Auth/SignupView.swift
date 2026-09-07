@@ -1,6 +1,6 @@
 //
 //  SignupView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Signup screen with email/password registration.
 //  Includes required terms acceptance checkbox.
@@ -82,6 +82,7 @@ struct SignupView: View {
                         placeholder: "At least 6 characters",
                         text: $password,
                         showPassword: $showPassword,
+                        textContentType: .newPassword,
                         isFocused: focusedField == .password
                     )
                     .focused($focusedField, equals: .password)
@@ -96,6 +97,7 @@ struct SignupView: View {
                         placeholder: "Re-enter your password",
                         text: $confirmPassword,
                         showPassword: $showPassword,
+                        textContentType: .newPassword,
                         isFocused: focusedField == .confirmPassword
                     )
                     .focused($focusedField, equals: .confirmPassword)
@@ -120,6 +122,7 @@ struct SignupView: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
 
             // Terms acceptance checkbox
             TermsAcceptanceCheckbox(isAccepted: $acceptedTerms)

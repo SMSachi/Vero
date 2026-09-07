@@ -1,6 +1,6 @@
 //
 //  Buttons.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Premium button components with personality
 //

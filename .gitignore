@@ -1,0 +1,18 @@
+# Local secrets — never commit
+Secrets.xcconfig
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+DerivedData/
+*.moved-aside
+*.pbxuser
+
+# macOS
+.DS_Store
+
+# Backups and build/test output
+*.bak
+*.xcresult
+build/
+Vero.xcodeproj/

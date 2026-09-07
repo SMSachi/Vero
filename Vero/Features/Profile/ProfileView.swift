@@ -1,6 +1,6 @@
 //
 //  ProfileView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  User profile - unified design system
 //
@@ -120,7 +120,8 @@ struct ProfileView: View {
                 .padding(.top, AppSpacing.Layout.topPadding)
                 .padding(.bottom, AppSpacing.Layout.bottomScrollPadding)
             }
-            .background(AppColors.background)
+            .scrollContentBackground(.hidden)
+            .background(AppColors.background.ignoresSafeArea(edges: .top))
             .navigationBarHidden(true)
         }
         .onAppear {
@@ -370,8 +371,8 @@ struct PremiumSection: View {
     private var tierTitle: String {
         switch currentTier {
         case .free: return "Upgrade to Premium"
-        case .plus: return "Insio Plus"
-        case .pro: return "Insio Pro"
+        case .plus: return "WellPattern Plus"
+        case .pro: return "WellPattern Pro"
         }
     }
 
@@ -692,13 +693,46 @@ struct DemoSection: View {
     let appState: AppState
     let latestWorkout: Workout?  // Passed in to avoid persistence calls during body
 
+    @State private var isVerifyingSync = false
+
+    private let syncService = SupabaseSyncService.shared
+
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
-            Text("Demo")
+            Text("Debug")
                 .font(AppTypography.sectionHeader)
                 .foregroundStyle(AppColors.textPrimary)
                 .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
 
+            // ── OpenRouter status (static — no button needed) ──────────────
+            VStack(alignment: .leading, spacing: 4) {
+                let configured = WellPatternConfig.OpenRouter.isConfigured
+                HStack(spacing: 8) {
+                    Image(systemName: configured ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .foregroundStyle(configured ? AppColors.olive : AppColors.coral)
+                    Text("OpenRouter AI")
+                        .font(AppTypography.cardTitle)
+                        .foregroundStyle(AppColors.textPrimary)
+                    Spacer()
+                    Text(configured ? "CONFIGURED" : "NOT ACTIVE")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(configured ? AppColors.olive : AppColors.coral)
+                }
+                Text(configured
+                    ? "API key present. AI enhancement is active."
+                    : "API key is placeholder. All analysis is local rule-based text. No AI calls are made."
+                )
+                .font(AppTypography.caption)
+                .foregroundStyle(AppColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(AppSpacing.md)
+            .background(AppColors.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.Layout.cardRadius, style: .continuous))
+            .standardShadow()
+            .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
+
+            // ── Check-in / demo actions ────────────────────────────────────
             VStack(spacing: 0) {
                 ActionRow(
                     icon: "checkmark.circle.fill",
@@ -726,6 +760,28 @@ struct DemoSection: View {
                     }
                 }
                 .disabled(latestWorkout == nil)
+
+                Divider()
+                    .padding(.leading, 56)
+
+                // Supabase verification — prints local vs cloud record counts to console
+                ActionRow(
+                    icon: isVerifyingSync ? "arrow.triangle.2.circlepath" : "icloud.and.arrow.up",
+                    title: isVerifyingSync ? "Verifying…" : "Verify Supabase Sync",
+                    subtitle: "Prints local vs cloud record counts to Xcode console",
+                    color: AppColors.navy
+                ) {
+                    guard !isVerifyingSync else { return }
+                    isVerifyingSync = true
+                    Task {
+                        let result = await syncService.verifySyncStatus()
+                        print("🔍 SupabaseVerify result: authenticated=\(result.isAuthenticated) configured=\(result.isConfigured) success=\(result.verificationSuccess)")
+                        print("🔍 Local  — workouts:\(result.localWorkoutCount) contexts:\(result.localDailyContextCount) checkIns:\(result.localCheckInCount)")
+                        print("🔍 Cloud  — workouts:\(result.cloudWorkoutCount) contexts:\(result.cloudDailyContextCount) checkIns:\(result.cloudCheckInCount)")
+                        if let err = result.error { print("🔍 Error: \(err)") }
+                        await MainActor.run { isVerifyingSync = false }
+                    }
+                }
 
                 Divider()
                     .padding(.leading, 56)
@@ -810,7 +866,7 @@ struct AboutSection: View {
                     showPrivacy = true
                 }
                 Divider().padding(.leading, 56)
-                SettingsRowItem(icon: "info.circle.fill", title: "About Insio", color: .purple) {
+                SettingsRowItem(icon: "info.circle.fill", title: "About WellPattern", color: .purple) {
                     showAbout = true
                 }
             }
@@ -833,7 +889,7 @@ struct AboutSection: View {
             PrivacyView()
         }
         .sheet(isPresented: $showAbout) {
-            AboutInsioView()
+            AboutWellPatternView()
         }
     }
 }

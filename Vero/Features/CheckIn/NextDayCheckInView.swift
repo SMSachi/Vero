@@ -1,6 +1,6 @@
 //
 //  NextDayCheckInView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Full-screen next-day recovery check-in - unified design system
 //  Saves recovery check-in data to local persistence via AppState.
@@ -30,7 +30,13 @@ struct NextDayCheckInView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
+        ZStack {
+            // Explicit full-screen background BEFORE any content renders.
+            // GeometryReader as fullScreenCover root gets a zero frame on the first
+            // layout pass, making AppColors.background invisible and causing the
+            // UIHostingController to silently swallow all touches. ZStack avoids this.
+            AppColors.background.ignoresSafeArea()
+
             VStack(spacing: 0) {
                 // HEADER
                 HStack {
@@ -130,9 +136,16 @@ struct NextDayCheckInView: View {
                 .offset(y: footerVisible ? 0 : 15)
             }
         }
-        .background(AppColors.background)
         .onAppear {
+            #if DEBUG
+            print("🔔 NextDayCheckInView APPEARED")
+            #endif
             startAnimations()
+        }
+        .onDisappear {
+            #if DEBUG
+            print("🔔 NextDayCheckInView DISAPPEARED")
+            #endif
         }
     }
 

@@ -1,6 +1,6 @@
 //
 //  SettingsViews.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Settings screens for notifications, health data, watch, and preferences.
 //
@@ -138,9 +138,10 @@ struct NotificationSettingsView: View {
                 } header: {
                     Text("Reminder Preferences")
                 } footer: {
-                    Text("Push notifications for these reminders coming in a future update. Your preferences are saved.")
+                    Text("Push notification scheduling is coming in a future update. These preferences will be applied when available.")
                         .foregroundStyle(AppColors.textTertiary)
                 }
+                .disabled(true)
             }
             .navigationTitle("Notifications")
             .navigationBarTitleDisplayMode(.inline)
@@ -365,7 +366,7 @@ struct HealthDataSettingsView: View {
                 } header: {
                     Text("Data Types")
                 } footer: {
-                    Text("Insio requests read-only access to these data types. You can customize permissions in the Health app.")
+                    Text("WellPattern requests read-only access to these data types. You can customize permissions in the Health app.")
                 }
 
                 // Debug Section (tap to show)
@@ -425,7 +426,7 @@ struct HealthDataSettingsView: View {
     private var statusFooterText: some View {
         switch connectionState {
         case .connectedWithData:
-            Text("Your health data is being synced. Insio reads your data but never writes to Apple Health.")
+            Text("Your health data is being synced. WellPattern reads your data but never writes to Apple Health.")
         case .connectedNoData:
             VStack(alignment: .leading, spacing: 4) {
                 Text("Connected to Apple Health, but no workout data found yet.")
@@ -438,7 +439,7 @@ struct HealthDataSettingsView: View {
                 Text("Access was denied. To enable:")
                     .foregroundStyle(AppColors.coral)
                 Text("1. Open Settings app")
-                Text("2. Go to Privacy & Security > Health > Insio")
+                Text("2. Go to Privacy & Security > Health > WellPattern")
                 Text("3. Enable the data types you want to share")
             }
             .foregroundStyle(AppColors.textSecondary)
@@ -562,14 +563,14 @@ struct WatchSettingsView: View {
                     }
                     .padding(.vertical, AppSpacing.xs)
                 } footer: {
-                    Text("Insio imports workouts through Apple Health. No dedicated Watch app is required.")
+                    Text("WellPattern imports workouts through Apple Health. No dedicated Watch app is required.")
                 }
 
                 Section {
                     WatchFeatureRow(
                         icon: "figure.run",
                         title: "Automatic Workout Import",
-                        description: "Workouts recorded on your Apple Watch appear in Insio automatically."
+                        description: "Workouts recorded on your Apple Watch appear in WellPattern automatically."
                     )
 
                     WatchFeatureRow(
@@ -581,7 +582,7 @@ struct WatchSettingsView: View {
                     WatchFeatureRow(
                         icon: "bed.double.fill",
                         title: "Sleep Tracking",
-                        description: "Sleep data from your Watch helps calculate your recovery readiness."
+                        description: "Sleep data from your Watch helps calculate your recovery score."
                     )
                 } header: {
                     Text("What Syncs")
@@ -589,13 +590,13 @@ struct WatchSettingsView: View {
 
                 Section {
                     VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                        Text("To get the most from Insio:")
+                        Text("To get the most from WellPattern:")
                             .font(AppTypography.cardSubtitle)
                             .foregroundStyle(AppColors.textPrimary)
 
                         VStack(alignment: .leading, spacing: AppSpacing.xs) {
                             BulletPoint(text: "Ensure your Apple Watch is paired in the Watch app")
-                            BulletPoint(text: "Grant Insio access to Apple Health data")
+                            BulletPoint(text: "Grant WellPattern access to Apple Health data")
                             BulletPoint(text: "Complete workouts using the Workout app on your Watch")
                         }
                     }
@@ -679,6 +680,7 @@ struct PreferencesView: View {
                     Text("Coming soon - unit conversion will be applied in a future update.")
                         .foregroundStyle(AppColors.coral)
                 }
+                .disabled(true)
 
                 Section {
                     Toggle("Show Calories", isOn: $showCalories)
@@ -689,6 +691,7 @@ struct PreferencesView: View {
                     Text("Coming soon - display options will be applied in a future update.")
                         .foregroundStyle(AppColors.coral)
                 }
+                .disabled(true)
 
                 Section {
                     Toggle("Dark Mode", isOn: $darkModeEnabled)
@@ -805,17 +808,18 @@ struct HelpView: View {
                 Section("Getting Started") {
                     HelpRow(title: "Connect Apple Health", description: "Go to Settings > Health Data to connect your health data.")
                     HelpRow(title: "Add a Workout", description: "Tap the + button on the Workouts tab to manually log a workout.")
-                    HelpRow(title: "Check-ins", description: "After workouts, Insio asks how you feel to improve future insights.")
+                    HelpRow(title: "Check-ins", description: "After workouts, WellPattern asks how you feel to improve future insights.")
                 }
 
                 Section("Features") {
                     HelpRow(title: "Workout Insights", description: "Tap any workout to see personalized analysis and recommendations.")
                     HelpRow(title: "Trends", description: "View your fitness patterns over time on the Trends tab.")
-                    HelpRow(title: "Recovery", description: "Your daily readiness score helps you train smarter.")
+                    HelpRow(title: "Recovery", description: "Your daily recovery score shows how ready your body is to train.")
                 }
 
                 Section("Support") {
-                    Link(destination: URL(string: "mailto:support@insiohealth.com")!) {
+                    // TODO: Replace insiohealth@gmail.com with WellPattern support email before shipping
+                    Link(destination: URL(string: "mailto:insiohealth@gmail.com")!) {
                         HStack {
                             Text("Contact Support")
                             Spacer()
@@ -858,44 +862,49 @@ struct HelpRow: View {
 
 struct PrivacyView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: AppSpacing.lg) {
+            VStack(spacing: AppSpacing.xl) {
+                Spacer()
+
+                Image(systemName: "hand.raised.fill")
+                    .font(.system(size: 48, weight: .medium))
+                    .foregroundStyle(AppColors.navy)
+
+                VStack(spacing: AppSpacing.sm) {
                     Text("Privacy Policy")
                         .font(AppTypography.screenTitle)
+                        .foregroundStyle(AppColors.textPrimary)
 
-                    VStack(alignment: .leading, spacing: AppSpacing.md) {
-                        PrivacySection(
-                            title: "Your Data Stays Yours",
-                            content: "Insio is designed with privacy first. Your health data is stored locally on your device and optionally synced to your personal cloud account."
-                        )
-
-                        PrivacySection(
-                            title: "What We Collect",
-                            content: "We only access the health data you explicitly authorize through Apple Health. This includes workouts, heart rate, sleep, and HRV data."
-                        )
-
-                        PrivacySection(
-                            title: "How We Use It",
-                            content: "Your health data is used solely to provide personalized workout insights and recovery recommendations. We do not sell or share your data."
-                        )
-
-                        PrivacySection(
-                            title: "Cloud Sync",
-                            content: "If you create an account, your data is encrypted and stored in your personal Supabase database. You can delete your account and all associated data at any time."
-                        )
-
-                        PrivacySection(
-                            title: "Analytics",
-                            content: "We may collect anonymous usage analytics to improve the app. This data cannot be tied back to you personally."
-                        )
-                    }
+                    Text("WellPattern is built with your privacy in mind. Your health data stays on your device and is only synced to your personal account.")
+                        .font(AppTypography.bodySmall)
+                        .foregroundStyle(AppColors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, AppSpacing.xl)
                 }
-                .padding(AppSpacing.Layout.horizontalMargin)
+
+                Button {
+                    openURL(WellPatternConfig.Legal.privacyPolicyURL)
+                } label: {
+                    HStack {
+                        Text("View Full Privacy Policy")
+                            .font(AppTypography.cardTitle)
+                            .foregroundStyle(AppColors.navy)
+                        Spacer()
+                        Image(systemName: "safari")
+                            .foregroundStyle(AppColors.textTertiary)
+                    }
+                    .padding(AppSpacing.md)
+                    .background(AppColors.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: AppSpacing.radiusMedium, style: .continuous))
+                }
+                .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
+
+                Spacer()
             }
-            .background(AppColors.background)
+            .background(AppColors.background.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -939,17 +948,17 @@ struct TermsOfServiceView: View {
                     VStack(alignment: .leading, spacing: AppSpacing.md) {
                         PrivacySection(
                             title: "Acceptance of Terms",
-                            content: "By downloading or using Insio, you agree to these Terms of Service. If you do not agree, please do not use the app."
+                            content: "By downloading or using WellPattern, you agree to these Terms of Service. If you do not agree, please do not use the app."
                         )
 
                         PrivacySection(
                             title: "Use of the Service",
-                            content: "Insio provides fitness tracking and workout insights. The app is intended for personal, non-commercial use. You must be at least 13 years old to use this service."
+                            content: "WellPattern provides fitness tracking and workout insights. The app is intended for personal, non-commercial use. You must be at least 13 years old to use this service."
                         )
 
                         PrivacySection(
                             title: "Health Information",
-                            content: "Insio is not a medical device and does not provide medical advice. The insights and recommendations are for informational purposes only. Always consult a healthcare professional before starting any fitness program."
+                            content: "WellPattern is not a medical device and does not provide medical advice. The insights and recommendations are for informational purposes only. Always consult a healthcare professional before starting any fitness program."
                         )
 
                         PrivacySection(
@@ -964,7 +973,7 @@ struct TermsOfServiceView: View {
 
                         PrivacySection(
                             title: "Limitation of Liability",
-                            content: "Insio is provided \"as is\" without warranties of any kind. We are not liable for any damages arising from your use of the app, including but not limited to fitness-related injuries."
+                            content: "WellPattern is provided \"as is\" without warranties of any kind. We are not liable for any damages arising from your use of the app, including but not limited to fitness-related injuries."
                         )
 
                         PrivacySection(
@@ -974,7 +983,8 @@ struct TermsOfServiceView: View {
 
                         PrivacySection(
                             title: "Contact",
-                            content: "For questions about these Terms of Service, contact us at support@insiohealth.com."
+                            // TODO: Replace insiohealth@gmail.com with WellPattern support email before shipping
+                            content: "For questions about these Terms of Service, contact us at insiohealth@gmail.com."
                         )
                     }
                 }
@@ -993,9 +1003,9 @@ struct TermsOfServiceView: View {
     }
 }
 
-// MARK: - About Insio View
+// MARK: - About WellPattern View
 
-struct AboutInsioView: View {
+struct AboutWellPatternView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showPrivacy = false
     @State private var showTerms = false
@@ -1017,7 +1027,7 @@ struct AboutInsioView: View {
                     .padding(.top, AppSpacing.xl)
 
                     VStack(spacing: AppSpacing.sm) {
-                        Text("Insio")
+                        Text("WellPattern")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
                             .foregroundStyle(AppColors.textPrimary)
 

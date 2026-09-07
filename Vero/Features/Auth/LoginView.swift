@@ -1,6 +1,6 @@
 //
 //  LoginView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Login screen with email/password authentication.
 //  Includes required terms acceptance checkbox.
@@ -21,109 +21,133 @@ struct LoginView: View {
     @State private var showPassword = false
     @State private var isSubmitting = false
     @State private var showResetPassword = false
+    @State private var isVisible = false
 
     @FocusState private var focusedField: Field?
+    @State private var instanceID = UUID()
 
     enum Field {
         case email, password
     }
 
     var body: some View {
-        VStack(spacing: AppSpacing.lg) {
-            // Title
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                Text("Welcome back")
-                    .font(AppTypography.headlineLarge)
-                    .foregroundStyle(AppColors.textPrimary)
+        #if DEBUG
+        let _ = print("🔐 LoginView: body — isSubmitting=\(isSubmitting) [id=\(instanceID.uuidString.prefix(6))]")
+        #endif
+        return ScrollView(showsIndicators: false) {
+            VStack(spacing: AppSpacing.lg) {
+                // Title
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    Text("Welcome back")
+                        .font(AppTypography.headlineLarge)
+                        .foregroundStyle(AppColors.textPrimary)
 
-                Text("Sign in to continue your journey")
-                    .font(AppTypography.bodyMedium)
-                    .foregroundStyle(AppColors.textSecondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            // Form
-            VStack(spacing: AppSpacing.md) {
-                // Email field
-                AuthTextField(
-                    title: "Email",
-                    placeholder: "your@email.com",
-                    text: $email,
-                    keyboardType: .emailAddress,
-                    textContentType: .emailAddress,
-                    isFocused: focusedField == .email
-                )
-                .focused($focusedField, equals: .email)
-                .submitLabel(.next)
-                .onSubmit {
-                    focusedField = .password
+                    Text("Sign in to continue your journey")
+                        .font(AppTypography.bodyMedium)
+                        .foregroundStyle(AppColors.textSecondary)
                 }
-
-                // Password field
-                AuthSecureField(
-                    title: "Password",
-                    placeholder: "Enter your password",
-                    text: $password,
-                    showPassword: $showPassword,
-                    isFocused: focusedField == .password
-                )
-                .focused($focusedField, equals: .password)
-                .submitLabel(.go)
-                .onSubmit {
-                    login()
-                }
-
-                // Forgot password
-                HStack {
-                    Spacer()
-                    Button {
-                        showResetPassword = true
-                    } label: {
-                        Text("Forgot password?")
-                            .font(AppTypography.labelSmall)
-                            .foregroundStyle(AppColors.navy)
-                    }
-                }
-            }
-
-            // Terms acceptance checkbox
-            TermsAcceptanceCheckbox(isAccepted: $acceptedTerms)
-
-            // Error message
-            if let error = authService.errorMessage {
-                HStack(spacing: AppSpacing.xs) {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .font(.system(size: 14))
-                    Text(error)
-                        .font(AppTypography.bodySmall)
-                }
-                .foregroundStyle(AppColors.error)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            }
 
-            // Login button
-            Button {
-                login()
-            } label: {
-                HStack(spacing: AppSpacing.sm) {
-                    if isSubmitting {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .scaleEffect(0.9)
+                // Form
+                VStack(spacing: AppSpacing.md) {
+                    // Email field
+                    AuthTextField(
+                        title: "Email",
+                        placeholder: "your@email.com",
+                        text: $email,
+                        keyboardType: .emailAddress,
+                        textContentType: .emailAddress,
+                        isFocused: focusedField == .email
+                    )
+                    .focused($focusedField, equals: .email)
+                    .submitLabel(.next)
+                    .onSubmit {
+                        focusedField = .password
                     }
-                    Text(isSubmitting ? "Signing in..." : "Sign in")
-                        .font(AppTypography.buttonLarge)
+
+                    // Password field
+                    AuthSecureField(
+                        title: "Password",
+                        placeholder: "Enter your password",
+                        text: $password,
+                        showPassword: $showPassword,
+                        textContentType: .password,
+                        isFocused: focusedField == .password
+                    )
+                    .focused($focusedField, equals: .password)
+                    .submitLabel(.go)
+                    .onSubmit {
+                        login()
+                    }
+
+                    // Forgot password
+                    HStack {
+                        Spacer()
+                        Button {
+                            showResetPassword = true
+                        } label: {
+                            Text("Forgot password?")
+                                .font(AppTypography.labelSmall)
+                                .foregroundStyle(AppColors.navy)
+                        }
+                    }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, AppSpacing.md)
-                .background(isFormValid ? AppColors.navy : AppColors.navy.opacity(0.5))
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: AppSpacing.radiusMedium, style: .continuous))
+
+                // Terms acceptance checkbox
+                TermsAcceptanceCheckbox(isAccepted: $acceptedTerms)
+
+                // Error message
+                if let error = authService.errorMessage {
+                    HStack(spacing: AppSpacing.xs) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 14))
+                        Text(error)
+                            .font(AppTypography.bodySmall)
+                    }
+                    .foregroundStyle(AppColors.error)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                // Login button
+                Button {
+                    login()
+                } label: {
+                    HStack(spacing: AppSpacing.sm) {
+                        if isSubmitting {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.9)
+                        }
+                        Text(isSubmitting ? "Signing in..." : "Sign in")
+                            .font(AppTypography.buttonLarge)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppSpacing.md)
+                    .background(isFormValid ? AppColors.navy : AppColors.navy.opacity(0.5))
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: AppSpacing.radiusMedium, style: .continuous))
+                }
+                .disabled(!isFormValid || isSubmitting)
             }
-            .disabled(!isFormValid || isSubmitting)
         }
+        .scrollDismissesKeyboard(.never)
         .sheet(isPresented: $showResetPassword) {
             ResetPasswordView()
+        }
+        .onAppear {
+            isVisible = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                guard isVisible else { return }
+                focusedField = .email
+            }
+        }
+        .onDisappear {
+            isVisible = false
+            isSubmitting = false
+            focusedField = nil
+            #if DEBUG
+            print("🔐 LoginView: DISAPPEARED ✅ [id=\(instanceID.uuidString.prefix(6))]")
+            #endif
         }
     }
 
@@ -138,10 +162,9 @@ struct LoginView: View {
     private func login() {
         guard isFormValid else { return }
 
-        print("🔐 ════════════════════════════════════════════════════")
-        print("🔐 LOGIN: SIGN-IN STARTED")
-        print("🔐 LOGIN: Email: \(email)")
-        print("🔐 ════════════════════════════════════════════════════")
+        #if DEBUG
+        print("🔐 [1] LOGIN BUTTON TAPPED — isSubmitting=false → true")
+        #endif
 
         // Dismiss keyboard
         focusedField = nil
@@ -151,23 +174,23 @@ struct LoginView: View {
 
         Task { @MainActor in
             do {
-                print("🔐 LOGIN: Calling authService.signIn...")
+                #if DEBUG
+                print("🔐 [2] SIGN-IN REQUEST SENT to Supabase")
+                #endif
+
                 try await authService.signIn(email: email, password: password)
 
-                print("🔐 ════════════════════════════════════════════════════")
-                print("🔐 LOGIN: ✅ SIGN-IN SUCCESS")
-                print("🔐 LOGIN: isAuthenticated = \(authService.isAuthenticated)")
-                print("🔐 ════════════════════════════════════════════════════")
+                #if DEBUG
+                print("🔐 [3] SIGN-IN SUCCESS — isAuthenticated=\(authService.isAuthenticated)")
+                print("🔐 [4] AppRootView will re-evaluate and render MainTabView")
+                #endif
 
                 isSubmitting = false
 
-                // CRITICAL: Post notification to force UI transition
-                // SwiftUI's reactive observation with singletons doesn't reliably trigger view replacement
-                NotificationCenter.default.post(name: .authStateDidChange, object: nil)
-                print("🔐 LOGIN: Posted authStateDidChange notification")
-
             } catch {
-                print("🔐 LOGIN: ❌ SIGN-IN FAILED: \(error)")
+                #if DEBUG
+                print("🔐 [ERR] SIGN-IN FAILED: \(error)")
+                #endif
                 isSubmitting = false
             }
         }

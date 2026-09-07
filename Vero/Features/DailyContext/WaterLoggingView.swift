@@ -1,6 +1,6 @@
 //
 //  WaterLoggingView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Dedicated water logging screen with visual feedback.
 //  Uses UnitPreferences for metric/imperial display.
@@ -204,7 +204,9 @@ struct WaterLoggingView: View {
                     Spacer()
                     Text(units.dailyHydrationGoalFormatted + " goal")
                     Spacer()
-                    Text(units.isMetric ? "5 L" : "170 oz")
+                    Text(units.isMetric
+                         ? "\(Int(units.volumeSliderRange.upperBound)) L"
+                         : "\(Int(units.volumeSliderRange.upperBound)) oz")
                 }
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(AppColors.textTertiary)
@@ -274,7 +276,7 @@ struct WaterLoggingView: View {
                 energyLevel: .moderate,
                 restingHeartRate: nil,
                 hrvScore: nil,
-                readinessScore: 50
+                readinessScore: nil
             )
         }
 

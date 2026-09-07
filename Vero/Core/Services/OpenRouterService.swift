@@ -1,6 +1,6 @@
 //
 //  OpenRouterService.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  AI enhancement service using OpenRouter.
 //  Converts structured AnalysisOutput into natural, user-friendly language.
@@ -47,14 +47,14 @@ final class OpenRouterService: ObservableObject {
         // Load cached enhancements
         loadCache()
         #if DEBUG
-        let key = InsioConfig.OpenRouter.apiKey
+        let key = WellPatternConfig.OpenRouter.apiKey
         let keyPrefix = key.count >= 5 ? String(key.prefix(5)) : key
-        if InsioConfig.OpenRouter.isConfigured {
-            print("🤖 OpenRouter: ✅ API key configured (prefix='\(keyPrefix)...'), model=\(InsioConfig.OpenRouter.model)")
+        if WellPatternConfig.OpenRouter.isConfigured {
+            print("🤖 OpenRouter: ✅ API key configured (prefix='\(keyPrefix)...'), model=\(WellPatternConfig.OpenRouter.model)")
         } else {
             print("🤖 OpenRouter: ❌ NOT CONFIGURED — key is placeholder '\(keyPrefix)...'")
             print("🤖 OpenRouter: ❌ All AI calls will use local fallback text.")
-            print("🤖 OpenRouter: ❌ To enable: set InsioConfig.OpenRouter.apiKey to your real key from https://openrouter.ai/keys")
+            print("🤖 OpenRouter: ❌ To enable: set WellPatternConfig.OpenRouter.apiKey to your real key from https://openrouter.ai/keys")
         }
         #endif
     }
@@ -100,7 +100,10 @@ final class OpenRouterService: ObservableObject {
             saveCache()
 
             isProcessing = false
-            print("🤖 OpenRouter: Enhancement successful for \(cacheKey)")
+            #if DEBUG
+            print("🤖 OpenRouter: ✅ Enhancement successful for \(cacheKey)")
+            print("🤖 OpenRouter: 🖥️ UI TARGET — WorkoutInsightView: headline (narrativeHeadline), body (explanationText), next-step (takeawayText)")
+            #endif
             return enhancement
 
         } catch {
@@ -212,43 +215,43 @@ final class OpenRouterService: ObservableObject {
 
     private func callOpenRouter(prompt: String) async throws -> String {
         // ── Key validation ──────────────────────────────────────────────────────
-        let apiKey = InsioConfig.OpenRouter.apiKey
+        let apiKey = WellPatternConfig.OpenRouter.apiKey
         #if DEBUG
         let keyPrefix = apiKey.count >= 5 ? String(apiKey.prefix(5)) : apiKey
         print("🤖 OpenRouter: ══════════════════════════════════════════════")
         print("🤖 OpenRouter: API CALL STARTING")
-        print("🤖 OpenRouter: key prefix  = \"\(keyPrefix)...\" (isConfigured=\(InsioConfig.OpenRouter.isConfigured))")
-        print("🤖 OpenRouter: model       = \(InsioConfig.OpenRouter.model)")
-        print("🤖 OpenRouter: endpoint    = \(InsioConfig.OpenRouter.baseURL)/chat/completions")
-        print("🤖 OpenRouter: max_tokens  = \(InsioConfig.OpenRouter.maxTokens)")
-        print("🤖 OpenRouter: temperature = \(InsioConfig.OpenRouter.temperature)")
+        print("🤖 OpenRouter: key prefix  = \"\(keyPrefix)...\" (isConfigured=\(WellPatternConfig.OpenRouter.isConfigured))")
+        print("🤖 OpenRouter: model       = \(WellPatternConfig.OpenRouter.model)")
+        print("🤖 OpenRouter: endpoint    = \(WellPatternConfig.OpenRouter.baseURL)/chat/completions")
+        print("🤖 OpenRouter: max_tokens  = \(WellPatternConfig.OpenRouter.maxTokens)")
+        print("🤖 OpenRouter: temperature = \(WellPatternConfig.OpenRouter.temperature)")
         #endif
 
-        guard InsioConfig.OpenRouter.isConfigured else {
+        guard WellPatternConfig.OpenRouter.isConfigured else {
             #if DEBUG
-            print("🤖 OpenRouter: ❌ ABORT — key is placeholder (starts with 'YOUR_'). Set a real key in InsioConfig.swift.")
+            print("🤖 OpenRouter: ❌ ABORT — key is placeholder (starts with 'YOUR_'). Set a real key in WellPatternConfig.swift.")
             print("🤖 OpenRouter: ══════════════════════════════════════════════")
             #endif
             throw OpenRouterError.notConfigured
         }
 
-        let url = URL(string: "\(InsioConfig.OpenRouter.baseURL)/chat/completions")!
+        let url = URL(string: "\(WellPatternConfig.OpenRouter.baseURL)/chat/completions")!
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Insio", forHTTPHeaderField: "HTTP-Referer")
-        request.setValue("Insio", forHTTPHeaderField: "X-Title")
+        request.setValue("WellPattern", forHTTPHeaderField: "HTTP-Referer")
+        request.setValue("WellPattern", forHTTPHeaderField: "X-Title")
 
         let body: [String: Any] = [
-            "model": InsioConfig.OpenRouter.model,
+            "model": WellPatternConfig.OpenRouter.model,
             "messages": [
                 ["role": "user", "content": prompt]
             ],
-            "max_tokens": InsioConfig.OpenRouter.maxTokens,
-            "temperature": InsioConfig.OpenRouter.temperature
+            "max_tokens": WellPatternConfig.OpenRouter.maxTokens,
+            "temperature": WellPatternConfig.OpenRouter.temperature
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -324,12 +327,19 @@ final class OpenRouterService: ObservableObject {
             )
         }
 
-        return EnhancedAnalysis(
+        let result = EnhancedAnalysis(
             enhancedSummary: json["summary"] ?? fallback.localSummary,
             enhancedInterpretation: json["interpretation"] ?? fallback.localInterpretation,
             enhancedRecommendation: json["recommendation"] ?? fallback.localRecommendation,
             source: .ai
         )
+        #if DEBUG
+        print("🤖 OpenRouter: 🔍 PARSE RESULT source=ai")
+        print("🤖 OpenRouter:    summary        = \(result.enhancedSummary.prefix(80))...")
+        print("🤖 OpenRouter:    interpretation = \(result.enhancedInterpretation.prefix(80))...")
+        print("🤖 OpenRouter:    recommendation = \(result.enhancedRecommendation?.prefix(80).description ?? "nil")")
+        #endif
+        return result
     }
 
     // MARK: - Caching
@@ -349,9 +359,9 @@ final class OpenRouterService: ObservableObject {
         cache = decoded.filter { !$0.value.isExpired }
 
         // Limit cache size
-        if cache.count > InsioConfig.Cache.aiEnhancementMaxCount {
+        if cache.count > WellPatternConfig.Cache.aiEnhancementMaxCount {
             let sorted = cache.sorted { $0.value.timestamp > $1.value.timestamp }
-            let prefixedEntries = Array(sorted.prefix(InsioConfig.Cache.aiEnhancementMaxCount))
+            let prefixedEntries = Array(sorted.prefix(WellPatternConfig.Cache.aiEnhancementMaxCount))
             cache = Dictionary(uniqueKeysWithValues: prefixedEntries)
         }
 
@@ -392,7 +402,7 @@ private struct CachedEnhancement: Codable {
     let timestamp: Date
 
     var isExpired: Bool {
-        Date().timeIntervalSince(timestamp) > InsioConfig.Cache.aiEnhancementTTL
+        Date().timeIntervalSince(timestamp) > WellPatternConfig.Cache.aiEnhancementTTL
     }
 }
 

@@ -1,6 +1,6 @@
 //
 //  SectionHeader.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Reusable section header with optional action
 //

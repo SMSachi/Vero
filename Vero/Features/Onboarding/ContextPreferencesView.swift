@@ -1,6 +1,6 @@
 //
 //  ContextPreferencesView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Daily context - unified design system
 //

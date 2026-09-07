@@ -1,6 +1,6 @@
 //
 //  InterpretationEngine.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Rule-based interpretation engine that generates human-readable insights
 //  about workouts based on workout data, daily context, check-ins, and patterns.
@@ -147,7 +147,7 @@ struct InterpretationEngine {
         let durationStr = workout.durationFormatted
 
         // Build honest summary
-        let summaryText = "Great start — your first \(typeName) logged in Insio."
+        let summaryText = "Great start — your first \(typeName) logged in WellPattern."
 
         // Build honest interpretation
         var interpretationParts: [String] = [
@@ -171,12 +171,12 @@ struct InterpretationEngine {
             interpretationParts.append("You felt \"\(feeling.lowercased())\" afterward.")
         }
 
-        interpretationParts.append("As you log more workouts, Insio will begin identifying patterns in effort, recovery, and consistency.")
+        interpretationParts.append("As you log more workouts, WellPattern will begin identifying patterns in effort, recovery, and consistency.")
 
         let interpretationText = interpretationParts.joined(separator: " ")
 
         // Honest recommendation
-        let recommendationText = "Keep logging your workouts. With more data, Insio can provide personalized insights about your training patterns."
+        let recommendationText = "Keep logging your workouts. With more data, WellPattern can provide personalized insights about your training patterns."
 
         // Simple bullet points
         var bullets: [InterpretationBullet] = [

@@ -1,6 +1,6 @@
 //
 //  PremiumManager.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Manages premium subscription state and feature access.
 //  Supports 3-tier system: Free, Plus, Pro.
@@ -96,11 +96,11 @@ final class PremiumManager: ObservableObject {
     // MARK: - Private Properties
 
     private let userDefaults = UserDefaults.standard
-    private let tierKey = "insio_subscription_tier"
-    private let expirationDateKey = "insio_premium_expiration"
-    private let productIDKey = "insio_premium_product_id"
-    private let trialStatusKey = "insio_trial_status"
-    private let trialStartDateKey = "insio_trial_start_date"
+    private let tierKey = "wellpattern_subscription_tier"
+    private let expirationDateKey = "wellpattern_premium_expiration"
+    private let productIDKey = "wellpattern_premium_product_id"
+    private let trialStatusKey = "wellpattern_trial_status"
+    private let trialStartDateKey = "wellpattern_trial_start_date"
 
     // MARK: - Initialization
 
@@ -113,7 +113,7 @@ final class PremiumManager: ObservableObject {
     /// Check if a specific feature is accessible at current tier
     func canAccess(_ feature: PremiumFeature) -> Bool {
         // If premium enforcement is disabled (dev mode), allow all
-        if !InsioConfig.Features.premiumEnforced {
+        if !WellPatternConfig.Features.premiumEnforced {
             return true
         }
 
@@ -128,7 +128,7 @@ final class PremiumManager: ObservableObject {
 
     /// Check if user can access AI features (tier + configuration)
     func canAccessAI() -> Bool {
-        guard InsioConfig.OpenRouter.isConfigured else { return false }
+        guard WellPatternConfig.OpenRouter.isConfigured else { return false }
 
         // Trial users get Plus-level AI access
         if isInTrial { return true }
@@ -143,13 +143,19 @@ final class PremiumManager: ObservableObject {
 
     /// Check if user can access per-workout AI summaries (Pro only)
     func canAccessWorkoutAI() -> Bool {
-        guard InsioConfig.OpenRouter.isConfigured else { return false }
+        guard WellPatternConfig.OpenRouter.isConfigured else { return false }
+        #if DEBUG
+        if WellPatternConfig.Features.bypassWorkoutAITier {
+            print("💎 PremiumManager: DEBUG bypass — workout AI tier check skipped")
+            return true
+        }
+        #endif
         return currentTier == .pro
     }
 
     /// Check if user can access weekly AI trends (Plus or Pro, or during trial)
     func canAccessWeeklyAI() -> Bool {
-        guard InsioConfig.OpenRouter.isConfigured else { return false }
+        guard WellPatternConfig.OpenRouter.isConfigured else { return false }
         if isInTrial { return true }
         return currentTier >= .plus
     }
@@ -159,36 +165,36 @@ final class PremiumManager: ObservableObject {
     /// Maximum history days for current tier
     var maxHistoryDays: Int? {
         // Trial users get Plus-level access
-        if isInTrial { return InsioConfig.TierLimits.plusHistoryDays }
+        if isInTrial { return WellPatternConfig.TierLimits.plusHistoryDays }
 
         switch currentTier {
-        case .free: return InsioConfig.TierLimits.freeHistoryDays
-        case .plus: return InsioConfig.TierLimits.plusHistoryDays
-        case .pro: return InsioConfig.TierLimits.proHistoryDays // nil = unlimited
+        case .free: return WellPatternConfig.TierLimits.freeHistoryDays
+        case .plus: return WellPatternConfig.TierLimits.plusHistoryDays
+        case .pro: return WellPatternConfig.TierLimits.proHistoryDays // nil = unlimited
         }
     }
 
     /// Maximum workouts visible for current tier
     var maxWorkoutsVisible: Int? {
         // Trial users get Plus-level access
-        if isInTrial { return InsioConfig.TierLimits.plusMaxWorkoutsVisible }
+        if isInTrial { return WellPatternConfig.TierLimits.plusMaxWorkoutsVisible }
 
         switch currentTier {
-        case .free: return InsioConfig.TierLimits.freeMaxWorkoutsVisible
-        case .plus: return InsioConfig.TierLimits.plusMaxWorkoutsVisible
-        case .pro: return InsioConfig.TierLimits.proMaxWorkoutsVisible // nil = unlimited
+        case .free: return WellPatternConfig.TierLimits.freeMaxWorkoutsVisible
+        case .plus: return WellPatternConfig.TierLimits.plusMaxWorkoutsVisible
+        case .pro: return WellPatternConfig.TierLimits.proMaxWorkoutsVisible // nil = unlimited
         }
     }
 
     /// Trend analysis days for current tier
     var trendDays: Int? {
         // Trial users get Plus-level access
-        if isInTrial { return InsioConfig.TierLimits.plusTrendDays }
+        if isInTrial { return WellPatternConfig.TierLimits.plusTrendDays }
 
         switch currentTier {
-        case .free: return InsioConfig.TierLimits.freeTrendDays
-        case .plus: return InsioConfig.TierLimits.plusTrendDays
-        case .pro: return InsioConfig.TierLimits.proTrendDays // nil = unlimited
+        case .free: return WellPatternConfig.TierLimits.freeTrendDays
+        case .plus: return WellPatternConfig.TierLimits.plusTrendDays
+        case .pro: return WellPatternConfig.TierLimits.proTrendDays // nil = unlimited
         }
     }
 
@@ -217,11 +223,9 @@ final class PremiumManager: ObservableObject {
         // Cache status
         cacheStatus()
 
-        print("💎 PremiumManager: Status updated")
-        print("💎 PremiumManager: tier = \(tier.rawValue)")
-        print("💎 PremiumManager: productID = \(productID ?? "none")")
-        print("💎 PremiumManager: isInTrial = \(isInTrial)")
-        print("💎 PremiumManager: expirationDate = \(expirationDate?.description ?? "none")")
+        #if DEBUG
+        print("💎 PremiumManager: Status updated — tier=\(tier.rawValue) trial=\(isInTrial)")
+        #endif
     }
 
     /// Clear premium status (e.g., on sign out)
@@ -237,7 +241,9 @@ final class PremiumManager: ObservableObject {
         userDefaults.removeObject(forKey: productIDKey)
         userDefaults.removeObject(forKey: trialStatusKey)
 
+        #if DEBUG
         print("💎 PremiumManager: Status cleared")
+        #endif
     }
 
     // MARK: - Verification
@@ -256,9 +262,9 @@ final class PremiumManager: ObservableObject {
 
     /// Determine tier from product ID
     static func tier(for productID: String) -> SubscriptionTier {
-        if InsioConfig.StoreKit.proProductIDs.contains(productID) {
+        if WellPatternConfig.StoreKit.proProductIDs.contains(productID) {
             return .pro
-        } else if InsioConfig.StoreKit.plusProductIDs.contains(productID) {
+        } else if WellPatternConfig.StoreKit.plusProductIDs.contains(productID) {
             return .plus
         } else {
             return .free
@@ -276,7 +282,7 @@ final class PremiumManager: ObservableObject {
 
         let trialEndDate = Calendar.current.date(
             byAdding: .day,
-            value: InsioConfig.StoreKit.freeTrialDays,
+            value: WellPatternConfig.StoreKit.freeTrialDays,
             to: Date()
         )!
 
@@ -289,7 +295,9 @@ final class PremiumManager: ObservableObject {
             isInTrial: true
         )
 
+        #if DEBUG
         print("💎 PremiumManager: Free trial started - expires \(trialEndDate)")
+        #endif
     }
 
     /// Check if the free trial has expired
@@ -300,7 +308,7 @@ final class PremiumManager: ObservableObject {
 
         guard let trialEnd = Calendar.current.date(
             byAdding: .day,
-            value: InsioConfig.StoreKit.freeTrialDays,
+            value: WellPatternConfig.StoreKit.freeTrialDays,
             to: trialStart
         ) else {
             return true
@@ -327,7 +335,9 @@ final class PremiumManager: ObservableObject {
             trialDaysRemaining = nil
             expirationDate = nil
             cacheStatus()
+            #if DEBUG
             print("💎 PremiumManager: Free trial has expired")
+            #endif
         }
     }
 
@@ -359,12 +369,14 @@ final class PremiumManager: ObservableObject {
 
         // Check if cached premium has expired
         if let expiration = expirationDate, expiration < Date() {
-            // Subscription has expired based on cached date
-            // StoreKitService will verify and update on next check
+            #if DEBUG
             print("💎 PremiumManager: Cached subscription may have expired")
+            #endif
         }
 
-        print("💎 PremiumManager: Loaded cached status - tier = \(currentTier.rawValue)")
+        #if DEBUG
+        print("💎 PremiumManager: Loaded cached status - tier=\(currentTier.rawValue)")
+        #endif
     }
 }
 

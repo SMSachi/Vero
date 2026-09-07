@@ -1,6 +1,6 @@
 //
 //  HealthPermissionIntroView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Explains Apple Health data access requirements.
 //  When the user taps Continue, this view requests HealthKit authorization
@@ -70,7 +70,7 @@ struct HealthPermissionIntroView: View {
                         .font(AppTypography.displaySmall)
                         .foregroundStyle(AppColors.textPrimary)
 
-                    Text("Insio reads your workout data to provide\npersonalized insights.")
+                    Text("WellPattern reads your workout data to provide\npersonalized insights.")
                         .font(AppTypography.bodyMedium)
                         .foregroundStyle(AppColors.textSecondary)
                         .multilineTextAlignment(.center)

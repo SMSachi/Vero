@@ -1,6 +1,6 @@
 //
 //  EmptyStateView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Premium empty state components - intentional and polished.
 //
@@ -105,7 +105,7 @@ struct WorkoutsEmptyState: View {
                 icon: "figure.run",
                 title: "Your workouts will appear here",
                 message: "Complete a workout on your Apple Watch, or add one manually to start tracking your fitness journey.",
-                secondaryMessage: "Insio syncs automatically with Apple Health",
+                secondaryMessage: "WellPattern syncs automatically with Apple Health",
                 actionTitle: "Add Workout",
                 action: onAddWorkout
             )
@@ -149,7 +149,7 @@ struct HomeEmptyState: View {
         case .connectedNoData:
             return "No Workouts Found"
         default:
-            return "Welcome to Insio"
+            return "Welcome to WellPattern"
         }
     }
 
@@ -162,7 +162,7 @@ struct HomeEmptyState: View {
             return "Apple Health is not available on this device. You can still add workouts manually."
             #endif
         case .denied:
-            return "Insio needs access to Apple Health to show your workouts. You can grant access in Settings, or add workouts manually."
+            return "WellPattern needs access to Apple Health to show your workouts. You can grant access in Settings, or add workouts manually."
         case .connectedNoData:
             return "Apple Health is connected but no workout data found yet. Complete a workout or add one manually to get started."
         default:

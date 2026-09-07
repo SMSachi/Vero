@@ -1,6 +1,6 @@
 //
 //  CalendarDayCell.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Calendar day cells for workout history
 //

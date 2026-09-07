@@ -1,6 +1,6 @@
 //
 //  PostWorkoutCheckInView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Full-screen post-workout check-in - unified design system
 //  Saves check-in data to local persistence via AppState.
@@ -22,7 +22,13 @@ struct PostWorkoutCheckInView: View {
     @State private var footerVisible = false
 
     var body: some View {
-        GeometryReader { geometry in
+        ZStack {
+            // Explicit full-screen background before any content renders.
+            // GeometryReader as fullScreenCover root gets a zero frame on first layout,
+            // collapsing all content to zero and making the UIHostingController swallow
+            // all touches silently. ZStack with ignoresSafeArea fixes this.
+            AppColors.background.ignoresSafeArea()
+
             VStack(spacing: 0) {
                 // HEADER
                 HStack {
@@ -65,8 +71,10 @@ struct PostWorkoutCheckInView: View {
                         .foregroundStyle(AppColors.textPrimary)
                         .multilineTextAlignment(.center)
 
-                    // Context
-                    Text("\(workout.durationFormatted) \u{00B7} \(workout.calories) cal")
+                    // Context — omit calories when unknown (0 means no HealthKit data)
+                    Text(workout.calories > 0
+                         ? "\(workout.durationFormatted) \u{00B7} \(workout.calories) cal"
+                         : workout.durationFormatted)
                         .font(AppTypography.bodyMedium)
                         .foregroundStyle(AppColors.textTertiary)
                 }
@@ -147,9 +155,16 @@ struct PostWorkoutCheckInView: View {
                 .offset(y: footerVisible ? 0 : 15)
             }
         }
-        .background(AppColors.background)
         .onAppear {
+            #if DEBUG
+            print("🔔 PostWorkoutCheckInView APPEARED")
+            #endif
             startAnimations()
+        }
+        .onDisappear {
+            #if DEBUG
+            print("🔔 PostWorkoutCheckInView DISAPPEARED")
+            #endif
         }
     }
 

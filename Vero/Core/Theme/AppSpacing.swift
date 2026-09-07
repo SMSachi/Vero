@@ -1,6 +1,6 @@
 //
 //  AppSpacing.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Unified design system - spacing, sizing, and layout constants
 //
@@ -298,4 +298,16 @@ struct SoftRoundedRectangle: Shape {
 
 extension CGFloat {
     static let spacing = AppSpacing.self
+}
+
+// MARK: - Safe Numeric Helpers
+
+extension Double {
+    /// Returns 0 if the value is NaN or infinite, otherwise returns self.
+    var safeFinite: Double { isFinite ? self : 0 }
+}
+
+extension CGFloat {
+    /// Returns 0 if the value is NaN or infinite, otherwise returns self.
+    var safeFinite: CGFloat { isFinite ? self : 0 }
 }

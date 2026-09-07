@@ -1,6 +1,6 @@
 //
 //  NutritionLoggingView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Simple nutrition logging view for water and macros.
 //  Designed for quick, easy logging without complexity.

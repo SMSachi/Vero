@@ -1,6 +1,6 @@
 //
 //  AuthContainerView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Container for authentication flow (login/signup).
 //  Manages terms acceptance state shared between login and signup.
@@ -16,6 +16,7 @@ struct AuthContainerView: View {
     @State private var showLogin = true
     @State private var isAnimating = false
     @State private var acceptedTerms = false
+    @State private var instanceID = UUID()
 
     var body: some View {
         // NOTE: This view is only mounted when AppRootView route == .auth
@@ -62,13 +63,22 @@ struct AuthContainerView: View {
             .padding(.vertical, AppSpacing.xl)
         }
         .onAppear {
-            print("🔐 AuthContainerView: APPEARED")
+            #if DEBUG
+            print("🔐 AuthContainerView: APPEARED [id=\(instanceID.uuidString.prefix(6))]")
+            #endif
             withAnimation(AppAnimation.entrance.delay(0.1)) {
                 isAnimating = true
             }
         }
         .onDisappear {
-            print("🔐 AuthContainerView: DISAPPEARED")
+            #if DEBUG
+            print("🔐 AuthContainerView: DISAPPEARED ✅ [id=\(instanceID.uuidString.prefix(6))]")
+            #endif
+        }
+        .onChange(of: authService.isAuthenticated) { _, isAuth in
+            #if DEBUG
+            print("🔐 AuthContainerView: isAuthenticated changed → \(isAuth) STILL IN TREE [id=\(instanceID.uuidString.prefix(6))]")
+            #endif
         }
     }
 }
@@ -90,7 +100,7 @@ struct AuthHeader: View {
             }
 
             VStack(spacing: AppSpacing.xs) {
-                Text("Insio")
+                Text("WellPattern")
                     .font(AppTypography.displayMedium)
                     .foregroundStyle(AppColors.textPrimary)
 

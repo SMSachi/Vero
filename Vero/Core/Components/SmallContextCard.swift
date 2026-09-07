@@ -1,6 +1,6 @@
 //
 //  SmallContextCard.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Compact context cards for daily metrics
 //

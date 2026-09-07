@@ -1,0 +1,100 @@
+{
+  "identifier" : "C543719B-3B69-4566-B7AC-DABD9613A164",
+  "nonConsumableProducts" : [],
+  "nonRenewingSubscriptionProducts" : [],
+  "products" : [],
+  "settings" : {
+    "_applicationInternalID" : "",
+    "_developerTeamID" : "LW24RJ9C2B",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "37E9D455-526A-4E98-96AE-F590A94F394F",
+      "localizations" : [
+        {
+          "customAppName" : "WellPattern",
+          "locale" : "en_US"
+        }
+      ],
+      "name" : "WellPattern Subscriptions",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "DF778979-7D8C-489A-A339-2012DC443FD4",
+          "introductoryOffer" : {
+            "duration" : "P3D",
+            "offerID" : "6D260C1B-45BC-4966-9211-C79CAB55AFD7",
+            "offerMode" : "FreeTrial",
+            "offerType" : 0
+          },
+          "localizations" : [
+            {
+              "description" : "Weekly AI workout trends and 30-day history",
+              "displayName" : "WellPattern Plus",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "wellpattern_plus_monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "WellPattern Plus Monthly",
+          "reviewed" : false,
+          "subscriptionGroupID" : "37E9D455-526A-4E98-96AE-F590A94F394F",
+          "type" : "RecurringSubscriptionV2"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "12.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "638FCBEE-31FE-43A4-8DD1-19A88543C709",
+          "introductoryOffer" : {
+            "duration" : "P3D",
+            "offerID" : "55EC122D-EC9D-497E-AB37-65B25A2355E0",
+            "offerMode" : "FreeTrial",
+            "offerType" : 0
+          },
+          "localizations" : [
+            {
+              "description" : "Full per-workout AI coaching and unlimited history",
+              "displayName" : "WellPattern Pro",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "wellpattern_pro_monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "WellPattern Pro Monthly",
+          "reviewed" : false,
+          "subscriptionGroupID" : "37E9D455-526A-4E98-96AE-F590A94F394F",
+          "type" : "RecurringSubscriptionV2"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 2,
+    "minor" : 0
+  }
+}

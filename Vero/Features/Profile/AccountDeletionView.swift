@@ -1,6 +1,6 @@
 //
 //  AccountDeletionView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Account deletion flow with clear warning and confirmation.
 //  Handles Supabase account deletion and local data cleanup.

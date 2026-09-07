@@ -1,48 +1,23 @@
 //
-//  InsioApp.swift
-//  Insio Health
+//  WellPatternApp.swift
+//  WellPattern Health
 //
-//  Main app entry point with clean routing architecture.
+//  Main app entry point.
 //
-//  ARCHITECTURE:
-//  - Uses @State showMainApp for reliable SwiftUI view switching
-//  - NotificationCenter bypasses SwiftUI's reactive system for singletons
-//  - ZStack with transitions for smooth animation
-//
-//  AUTH FIX (PERMANENT):
-//  - Use @State showMainApp (local state SwiftUI definitely observes)
-//  - Use NotificationCenter to force transition (bypasses singleton issues)
-//  - Use ZStack (not Group) for reliable view replacement
-//
-//  IF AUTH BREAKS AGAIN:
-//  1. Check LoginView posts .authStateDidChange notification after sign-in
-//  2. Check AppRootView listens with .onReceive
-//  3. Ensure showMainApp is @State
-//  4. Use ZStack, not Group
+//  ROUTING:
+//  AppRootView reads authService.isAuthenticated directly in a plain if/else.
+//  No showMain state, no onChange, no ZStack, no .id(), no NotificationCenter.
+//  AuthService.signIn() sets isAuthenticated inside withAnimation(nil) so the
+//  SwiftUI render that removes AuthContainerView happens in a nil-animation
+//  transaction — instant removal, onDisappear fires synchronously.
 //
 
 import SwiftUI
 import SwiftData
-import Combine
 import UIKit
 
-// MARK: - Notification for Auth State Change
-
-extension Notification.Name {
-    static let authStateDidChange = Notification.Name("authStateDidChange")
-}
-
-// MARK: - App Route
-
-enum AppRoute: Equatable {
-    case loading
-    case onboarding
-    case auth
-    case main
-}
-
 @main
-struct InsioApp: App {
+struct WellPatternApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var authService = AuthService.shared
     @StateObject private var syncService = SupabaseSyncService.shared
@@ -53,8 +28,12 @@ struct InsioApp: App {
 
     init() {
         #if DEBUG
-        print("🚀 InsioApp: init()")
+        print("🚀 WellPatternApp: init()")
         #endif
+
+        // ── Migrate UserDefaults keys from legacy Insio branding ─────────────
+        // Must run before PremiumManager or UserGoalService read their keys.
+        WellPatternApp.migrateUserDefaultsKeys()
 
         // ── Fix A: Root white background ──────────────────────────────────────
         // UINavigationController paints .systemBackground (white) before SwiftUI
@@ -97,63 +76,63 @@ struct InsioApp: App {
                 }
         }
     }
+
+    // Idempotent one-time migration: reads old Insio-prefixed keys, writes to
+    // WellPattern-prefixed keys, then deletes old keys. Safe to call on every launch.
+    private static func migrateUserDefaultsKeys() {
+        let migrations: [(old: String, new: String)] = [
+            ("insio_subscription_tier",  "wellpattern_subscription_tier"),
+            ("insio_premium_expiration", "wellpattern_premium_expiration"),
+            ("insio_premium_product_id", "wellpattern_premium_product_id"),
+            ("insio_trial_status",       "wellpattern_trial_status"),
+            ("insio_trial_start_date",   "wellpattern_trial_start_date"),
+            ("insio_user_primary_goal",  "wellpattern_user_primary_goal"),
+            ("insio_user_selected_goals","wellpattern_user_selected_goals"),
+        ]
+        let defaults = UserDefaults.standard
+        for (old, new) in migrations {
+            guard let value = defaults.object(forKey: old) else { continue }
+            if defaults.object(forKey: new) == nil {
+                defaults.set(value, forKey: new)
+            }
+            defaults.removeObject(forKey: old)
+        }
+    }
 }
 
 // MARK: - App Root View
 
-/// Root view using @State + NotificationCenter for reliable auth transitions.
-/// SwiftUI's reactive observation with singletons doesn't reliably trigger view replacement,
-/// so we use NotificationCenter to force the transition.
+/// Root view with single-source-of-truth routing.
+///
+/// Direct if/else on authService.isAuthenticated — no showMain state needed.
+/// AuthService.signIn() and handleSession() set isAuthenticated inside
+/// withAnimation(nil), so every re-render triggered by that change runs in a
+/// nil-animation transaction. SwiftUI removes AuthContainerView instantly;
+/// onDisappear fires synchronously in the same render pass.
 struct AppRootView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var authService: AuthService
-    @State private var showMainApp = false
 
     var body: some View {
-        // .id() forces SwiftUI to DESTROY and RECREATE the entire ZStack when
-        // showMainApp flips. This bypasses the simulator rendering bug where
-        // SwiftUI updates the view graph (if/else) but never repaints the screen.
-        // Using string IDs ("auth"/"main") instead of Bool so the identity is clear.
-        //
-        // IMPORTANT: .onAppear and .onChange are placed OUTSIDE .id() so they are
-        // NOT recreated when the ID changes — they persist on the wrapper view.
-        ZStack {
-            if showMainApp {
+        #if DEBUG
+        let _ = print("🏠 AppRootView body — isAuthenticated=\(authService.isAuthenticated) → branch: \(authService.isAuthenticated ? "MAIN" : "AUTH")")
+        #endif
+
+        Group {
+            if authService.isAuthenticated {
                 MainTabView()
                     .onAppear {
                         #if DEBUG
                         print("🏠 MainTabView APPEARED")
                         #endif
-                    }
-                    .onChange(of: authService.isAuthenticated) { _, isAuth in
-                        if !isAuth { showMainApp = false }
+                        appState.onAuthenticationSuccess()
                     }
             } else {
                 authFlow
-                    .onReceive(NotificationCenter.default.publisher(for: .authStateDidChange)) { _ in
-                        #if DEBUG
-                        print("🏠 notification → showMainApp = true")
-                        #endif
-                        showMainApp = true
-                    }
-                    .onChange(of: authService.isAuthenticated) { _, isAuth in
-                        if isAuth { showMainApp = true }
-                    }
+                    .transition(.identity)
             }
         }
-        .id(showMainApp ? "main" : "auth")  // Forces full view-tree replacement on flip
-        .onAppear {
-            // Initial check: already authenticated (e.g. app relaunch with session)
-            if authService.isAuthenticated { showMainApp = true }
-        }
-        .onChange(of: showMainApp) { _, isShowing in
-            if isShowing {
-                #if DEBUG
-                print("🏠 showMainApp → true, calling onAuthenticationSuccess")
-                #endif
-                appState.onAuthenticationSuccess()
-            }
-        }
+        .animation(nil, value: authService.isAuthenticated)
     }
 
     @ViewBuilder
@@ -228,15 +207,47 @@ class AppState: ObservableObject {
 
     // MARK: - Auth Helpers
 
-    /// Called when user successfully authenticates
-    /// IMPORTANT: This must NOT block UI rendering - restore runs in background
+    /// Called when user successfully authenticates (false→true transition only).
+    /// Clears stale data from any previous account, then restores current user's data.
     func onAuthenticationSuccess() {
-        checkForPendingCheckIns()
+        workoutMonitor.clearAllPending()
 
-        // CRITICAL: Use Task.detached to ensure this doesn't block main actor
-        // The regular Task {} inherits @MainActor context and can block UI rendering
+        // Detect account switch: compare current user ID to who was last signed in.
+        // On a switch, wipe local data so Account B never sees Account A's workouts.
+        let currentUserId = authService.currentUser?.id.uuidString
+        let lastUserId = UserDefaults.standard.string(forKey: "lastSignedInUserId")
+
+        if currentUserId != lastUserId {
+            #if DEBUG
+            print("🔔 [AUTH] Account switch — clearing stale local data")
+            print("🔔 [AUTH] previous: \(lastUserId ?? "none") → current: \(currentUserId ?? "none")")
+            #endif
+            PersistenceService.shared.clearAllData()
+            NutritionService.shared.deleteAllEntries()
+            UserGoalService.shared.clearGoals()
+            syncService.clearSyncState()
+            workoutMonitor.resetCompletedTracking()
+        } else {
+            #if DEBUG
+            let count = PersistenceService.shared.fetchRecentWorkouts(limit: 500).count
+            print("🔔 [AUTH] Same user re-auth — keeping \(count) local workouts")
+            #endif
+        }
+
+        if let uid = currentUserId {
+            UserDefaults.standard.set(uid, forKey: "lastSignedInUserId")
+        }
+
+        // Restore current user's cloud data in background — must not block main actor.
         Task.detached(priority: .utility) { [syncService] in
             await syncService.restoreUserData()
+
+            #if DEBUG
+            await MainActor.run {
+                let restored = PersistenceService.shared.fetchRecentWorkouts(limit: 500).count
+                print("🔔 [AUTH] restoreUserData complete — \(restored) workouts after restore")
+            }
+            #endif
         }
     }
 
@@ -264,6 +275,9 @@ class AppState: ObservableObject {
         // completedNextDayIds so Account B cannot inherit Account A's tracking.
         workoutMonitor.clearAllPending()
         workoutMonitor.resetCompletedTracking()
+
+        // Clear the account-switch guard so the next sign-in always runs a fresh restore.
+        UserDefaults.standard.removeObject(forKey: "lastSignedInUserId")
 
         #if DEBUG
         // Verify the local store is fully empty after sign-out
@@ -315,7 +329,16 @@ class AppState: ObservableObject {
     /// Called when MainTabView appears (after auth success) and on scene phase changes.
     func checkForPendingCheckIns() {
         guard authService.isAuthenticated else { return }
+
+        #if DEBUG
+        print("🔔 [CHECK-IN] checkForPendingCheckIns — showPost=\(showPostWorkoutCheckIn) showNext=\(showNextDayCheckIn)")
+        #endif
+
         workoutMonitor.checkForPendingCheckIns()
+
+        #if DEBUG
+        print("🔔 [CHECK-IN] after monitor check — hasPendingPost=\(workoutMonitor.hasPendingPostWorkoutCheckIn) hasPendingNext=\(workoutMonitor.hasPendingNextDayCheckIn)")
+        #endif
 
         if workoutMonitor.hasPendingPostWorkoutCheckIn,
            let workout = workoutMonitor.pendingWorkoutForCheckIn,
@@ -326,6 +349,9 @@ class AppState: ObservableObject {
         if workoutMonitor.hasPendingNextDayCheckIn,
            let workout = workoutMonitor.pendingWorkoutForNextDayCheckIn,
            workoutMonitor.shouldShowNextDayCheckIn() {
+            #if DEBUG
+            print("🔔 [CHECK-IN] next-day pending — scheduling trigger in 0.5 s")
+            #endif
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.triggerNextDayCheckIn(for: workout.id)
             }
@@ -348,12 +374,18 @@ class AppState: ObservableObject {
         guard !showPostWorkoutCheckIn else { return }
         checkInWorkout = workout
         showPostWorkoutCheckIn = true
+        #if DEBUG
+        print("🔔 [CHECK-IN] Post-workout check-in sheet PRESENTED for workout: \(workout.id)")
+        #endif
     }
 
     func triggerNextDayCheckIn(for workoutId: UUID? = nil) {
         guard !showNextDayCheckIn else { return }
         nextDayCheckInWorkoutId = workoutId
         showNextDayCheckIn = true
+        #if DEBUG
+        print("🔔 [CHECK-IN] Next-day check-in sheet PRESENTED (workoutId: \(workoutId?.uuidString ?? "nil"))")
+        #endif
     }
 
     // MARK: - Check-In Completion
@@ -363,6 +395,10 @@ class AppState: ObservableObject {
             showPostWorkoutCheckIn = false
             return
         }
+
+        #if DEBUG
+        print("🔔 [CHECK-IN] Post-workout check-in DISMISSED (completed, feeling: \(feeling))")
+        #endif
 
         // Local save first (immediate)
         PersistenceService.shared.savePostWorkoutCheckIn(
@@ -390,6 +426,10 @@ class AppState: ObservableObject {
     }
 
     func completeNextDayCheckIn(bodyFeeling: String) {
+        #if DEBUG
+        print("🔔 [CHECK-IN] Next-day check-in DISMISSED (completed, feeling: \(bodyFeeling))")
+        #endif
+
         let workoutId = nextDayCheckInWorkoutId
 
         // Local save first (immediate)
@@ -409,6 +449,9 @@ class AppState: ObservableObject {
     }
 
     func skipPostWorkoutCheckIn() {
+        #if DEBUG
+        print("🔔 [CHECK-IN] Post-workout check-in DISMISSED (skipped)")
+        #endif
         if let workout = checkInWorkout {
             workoutMonitor.postWorkoutCheckInSkipped(for: workout.id)
         }
@@ -417,6 +460,9 @@ class AppState: ObservableObject {
     }
 
     func skipNextDayCheckIn() {
+        #if DEBUG
+        print("🔔 [CHECK-IN] Next-day check-in DISMISSED (skipped)")
+        #endif
         if let workoutId = nextDayCheckInWorkoutId {
             workoutMonitor.nextDayCheckInSkipped(for: workoutId)
         }

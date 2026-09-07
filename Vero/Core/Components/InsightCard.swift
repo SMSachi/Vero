@@ -1,6 +1,6 @@
 //
 //  InsightCard.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Editorial insight card with clean typography
 //

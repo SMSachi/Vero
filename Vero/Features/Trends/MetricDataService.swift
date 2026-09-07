@@ -1,6 +1,6 @@
 //
 //  MetricDataService.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Service for aggregating metric-specific data for the Trends detail views.
 //  Fetches real data from PersistenceService and computes stats.
@@ -295,9 +295,7 @@ final class MetricDataService {
     func fetchWorkoutsData(days: Int) -> MetricDetailData {
         print("📊 MetricDataService: Fetching workouts data for \(days) days")
 
-        let endDate = Date()
-        let startDate = Calendar.current.date(byAdding: .day, value: -days, to: endDate)!
-        let workouts = persistence.fetchWorkouts(from: startDate, to: endDate)
+        let workouts = MetricsEngine.shared.workouts(rollingDays: days)
 
         guard !workouts.isEmpty else {
             print("📊 MetricDataService: No workout data found")
@@ -305,7 +303,7 @@ final class MetricDataService {
         }
 
         let totalWorkouts = workouts.count
-        let weeksInPeriod = max(1, Double(days) / 7.0)
+        let weeksInPeriod = MetricsEngine.shared.weeksInPeriod(days)
         let workoutsPerWeek = Double(totalWorkouts) / weeksInPeriod
 
         // Group by day for chart
@@ -317,9 +315,10 @@ final class MetricDataService {
         }
 
         // Generate daily counts for chart
+        let today = Date()
         var dailyCounts: [(date: Date, count: Int)] = []
         for offset in (0..<days).reversed() {
-            if let date = calendar.date(byAdding: .day, value: -offset, to: endDate) {
+            if let date = calendar.date(byAdding: .day, value: -offset, to: today) {
                 let day = calendar.startOfDay(for: date)
                 dailyCounts.append((day, workoutsByDay[day] ?? 0))
             }
@@ -373,9 +372,7 @@ final class MetricDataService {
     // MARK: - Helpers
 
     private func fetchContexts(days: Int) -> [DailyContext] {
-        let all = persistence.fetchRecentDailyContexts(limit: days + 7)
-        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())!
-        return all.filter { $0.date >= cutoff }
+        MetricsEngine.shared.contexts(rollingDays: days)
     }
 
     private func calculateChange(values: [Double]) -> Double {

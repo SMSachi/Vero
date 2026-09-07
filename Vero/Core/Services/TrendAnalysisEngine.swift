@@ -1,6 +1,6 @@
 //
 //  TrendAnalysisEngine.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Analyzes persisted workout, check-in, and recovery data to generate
 //  plain-language trend insights for the Trends screen.
@@ -24,118 +24,130 @@ import Foundation
 // MARK: - Trend Analysis Engine
 
 /// Analyzes persisted health data to generate trend insights.
-@MainActor
+// Analysis runs in two phases:
+//   Phase 1 (main actor)  — SwiftData fetches + singleton captures
+//   Phase 2 (background)  — pure computation on whatever thread the caller uses
 struct TrendAnalysisEngine {
 
     // MARK: - Main Analysis Method
 
     /// Generate all trend insights for a given timeframe.
     /// - Parameter timeframe: The analysis period (7, 14, or 30 days)
-    /// - Returns: Array of generated insights sorted by priority
-    static func analyze(
-        timeframe: Int = 30,
-        persistenceService: PersistenceService? = nil
-    ) -> TrendAnalysisResult {
-        // Use passed service or default to shared instance
-        let service = persistenceService ?? PersistenceService.shared
+    /// - Returns: Complete analysis result
+    static func analyze(timeframe: Int = 30) async -> TrendAnalysisResult {
 
-        let endDate = Date()
-        let startDate = Calendar.current.date(byAdding: .day, value: -timeframe, to: endDate)!
+        // ── Phase 1: Fetch data on the main actor ────────────────────────────
+        // All SwiftData queries and @MainActor singleton reads happen here.
+        let fetched = await MainActor.run { () -> FetchedData in
+            let service = PersistenceService.shared
+            let endDate = Date()
+            let startDate = MetricsEngine.shared.rollingWindowStart(days: timeframe)
+            let goalService = UserGoalService.shared
 
-        // Fetch all relevant data
-        let workouts = fetchWorkouts(from: startDate, to: endDate, service: service)
-        let previousWorkouts = fetchPreviousWorkouts(before: startDate, limit: 20, service: service)
-        let checkIns = fetchCheckIns(from: startDate, to: endDate, service: service)
-        let contexts = fetchDailyContexts(from: startDate, to: endDate, service: service)
-        let recoveries = fetchRecoveries(from: startDate, to: endDate, service: service)
+            return FetchedData(
+                workouts: fetchWorkouts(from: startDate, to: endDate, service: service),
+                previousWorkouts: fetchPreviousWorkouts(before: startDate, limit: 20, service: service),
+                checkIns: fetchCheckIns(from: startDate, to: endDate, service: service),
+                contexts: fetchDailyContexts(from: startDate, to: endDate, service: service),
+                recoveries: fetchRecoveries(from: startDate, to: endDate, service: service),
+                weightEntries: MetricsEngine.shared.weightEntries(rollingDays: timeframe),
+                weeksInTimeframe: MetricsEngine.shared.weeksInPeriod(timeframe),
+                showWeightUI: goalService.shouldShowWeightUI,
+                showNutrition: goalService.shouldEmphasizeNutrition,
+                primaryGoal: goalService.primaryGoal,
+                unitSystem: UnitPreferences.shared.unitSystem
+            )
+        }
 
-        // Generate insights from each category
+        // ── Phase 2: Pure computation (runs on caller's executor) ─────────────
         var insights: [GeneratedInsight] = []
 
         // 1. Workout frequency analysis
         insights.append(contentsOf: analyzeWorkoutFrequency(
-            workouts: workouts,
-            previousWorkouts: previousWorkouts,
-            timeframe: timeframe
+            workouts: fetched.workouts,
+            previousWorkouts: fetched.previousWorkouts,
+            timeframe: timeframe,
+            weeksInTimeframe: fetched.weeksInTimeframe
         ))
 
         // 2. Workout type distribution
         insights.append(contentsOf: analyzeWorkoutTypeDistribution(
-            workouts: workouts,
+            workouts: fetched.workouts,
             timeframe: timeframe
         ))
 
         // 3. Harder-than-usual detection
         insights.append(contentsOf: analyzeHarderThanUsual(
-            workouts: workouts,
-            checkIns: checkIns
+            workouts: fetched.workouts,
+            checkIns: fetched.checkIns
         ))
 
         // 4. Soreness patterns after strength
         insights.append(contentsOf: analyzeSorenessPatterns(
-            workouts: workouts,
-            recoveries: recoveries,
-            checkIns: checkIns
+            workouts: fetched.workouts,
+            recoveries: fetched.recoveries,
+            checkIns: fetched.checkIns
         ))
 
         // 5. Sleep vs workout difficulty
         insights.append(contentsOf: analyzeSleepWorkoutCorrelation(
-            workouts: workouts,
-            contexts: contexts,
-            checkIns: checkIns
+            workouts: fetched.workouts,
+            contexts: fetched.contexts,
+            checkIns: fetched.checkIns
         ))
 
         // 6. Recovery patterns
         insights.append(contentsOf: analyzeRecoveryPatterns(
-            workouts: workouts,
-            recoveries: recoveries
+            workouts: fetched.workouts,
+            recoveries: fetched.recoveries
         ))
 
         // 7. Consistency analysis
         insights.append(contentsOf: analyzeConsistency(
-            workouts: workouts,
+            workouts: fetched.workouts,
             timeframe: timeframe
         ))
 
         // 8. Weight trend analysis (only for weight_loss goal)
-        let goalService = UserGoalService.shared
-        if goalService.shouldShowWeightUI {
+        if fetched.showWeightUI {
             insights.append(contentsOf: analyzeWeightTrend(
-                contexts: contexts,
-                timeframe: timeframe
+                contexts: fetched.contexts,
+                timeframe: timeframe,
+                unitSystem: fetched.unitSystem
             ))
         }
 
         // 9. Nutrition/hydration trend analysis (for weight_loss and performance)
-        if goalService.shouldEmphasizeNutrition {
+        if fetched.showNutrition {
             insights.append(contentsOf: analyzeNutritionTrend(
-                contexts: contexts,
-                timeframe: timeframe
+                contexts: fetched.contexts,
+                timeframe: timeframe,
+                primaryGoal: fetched.primaryGoal
             ))
         }
 
         // 10. Hydration trend (all goals)
         insights.append(contentsOf: analyzeHydrationTrend(
-            contexts: contexts,
+            contexts: fetched.contexts,
             timeframe: timeframe
         ))
 
-        // Sort by priority and return
         let sortedInsights = insights.sorted { $0.priority.rawValue > $1.priority.rawValue }
 
-        // Generate calendar data
         let calendarData = generateCalendarData(
-            workouts: workouts,
-            checkIns: checkIns,
+            workouts: fetched.workouts,
+            checkIns: fetched.checkIns,
             timeframe: timeframe
         )
 
-        // Generate metric trends
         let metricTrends = generateMetricTrends(
-            workouts: workouts,
-            contexts: contexts,
-            recoveries: recoveries,
-            timeframe: timeframe
+            workouts: fetched.workouts,
+            contexts: fetched.contexts,
+            recoveries: fetched.recoveries,
+            timeframe: timeframe,
+            weightEntries: fetched.weightEntries,
+            showWeightUI: fetched.showWeightUI,
+            unitSystem: fetched.unitSystem
         )
 
         return TrendAnalysisResult(
@@ -143,14 +155,30 @@ struct TrendAnalysisEngine {
             calendarData: calendarData,
             metricTrends: metricTrends,
             timeframe: timeframe,
-            workoutCount: workouts.count,
+            workoutCount: fetched.workouts.count,
             analyzedAt: Date()
         )
     }
 
+    // MARK: - Prefetched data container
+
+    private struct FetchedData: Sendable {
+        let workouts: [AnalyzableWorkout]
+        let previousWorkouts: [Workout]
+        let checkIns: [CheckIn]
+        let contexts: [DailyContext]
+        let recoveries: [NextDayRecovery]
+        let weightEntries: [(date: Date, kg: Double)]
+        let weeksInTimeframe: Double
+        let showWeightUI: Bool
+        let showNutrition: Bool
+        let primaryGoal: UserGoal?
+        let unitSystem: UnitSystem
+    }
+
     // MARK: - Data Fetching
 
-    private static func fetchWorkouts(
+    @MainActor private static func fetchWorkouts(
         from startDate: Date,
         to endDate: Date,
         service: PersistenceService
@@ -170,7 +198,7 @@ struct TrendAnalysisEngine {
         }
     }
 
-    private static func fetchPreviousWorkouts(
+    @MainActor private static func fetchPreviousWorkouts(
         before date: Date,
         limit: Int,
         service: PersistenceService
@@ -179,7 +207,7 @@ struct TrendAnalysisEngine {
         return Array(service.fetchWorkouts(from: oldDate, to: date).prefix(limit))
     }
 
-    private static func fetchCheckIns(
+    @MainActor private static func fetchCheckIns(
         from startDate: Date,
         to endDate: Date,
         service: PersistenceService
@@ -189,7 +217,7 @@ struct TrendAnalysisEngine {
         }
     }
 
-    private static func fetchDailyContexts(
+    @MainActor private static func fetchDailyContexts(
         from startDate: Date,
         to endDate: Date,
         service: PersistenceService
@@ -201,7 +229,7 @@ struct TrendAnalysisEngine {
         }
     }
 
-    private static func fetchRecoveries(
+    @MainActor private static func fetchRecoveries(
         from startDate: Date,
         to endDate: Date,
         service: PersistenceService
@@ -217,13 +245,13 @@ struct TrendAnalysisEngine {
     private static func analyzeWorkoutFrequency(
         workouts: [AnalyzableWorkout],
         previousWorkouts: [Workout],
-        timeframe: Int
+        timeframe: Int,
+        weeksInTimeframe: Double
     ) -> [GeneratedInsight] {
         var insights: [GeneratedInsight] = []
 
         let currentCount = workouts.count
-        let weeksInTimeframe = max(1, timeframe / 7)
-        let workoutsPerWeek = Double(currentCount) / Double(weeksInTimeframe)
+        let workoutsPerWeek = Double(currentCount) / weeksInTimeframe
 
         // Compare to previous period if available
         let previousCount = previousWorkouts.count
@@ -519,9 +547,10 @@ struct TrendAnalysisEngine {
             ))
         }
 
-        // Average sleep analysis
-        if !contexts.isEmpty {
-            let avgSleep = contexts.map { $0.sleepHours }.reduce(0, +) / Double(contexts.count)
+        // Average sleep analysis — only include days where sleep was actually logged
+        let sleepLogged = contexts.map { $0.sleepHours }.filter { $0 > 0 }
+        if !sleepLogged.isEmpty {
+            let avgSleep = sleepLogged.reduce(0, +) / Double(sleepLogged.count)
 
             if avgSleep < 6.5 {
                 insights.append(GeneratedInsight(
@@ -699,7 +728,8 @@ struct TrendAnalysisEngine {
 
     private static func analyzeWeightTrend(
         contexts: [DailyContext],
-        timeframe: Int
+        timeframe: Int,
+        unitSystem: UnitSystem
     ) -> [GeneratedInsight] {
         var insights: [GeneratedInsight] = []
 
@@ -730,16 +760,20 @@ struct TrendAnalysisEngine {
         let firstWeight = weightsWithDates.first!.weight
         let lastWeight = weightsWithDates.last!.weight
         let weightChange = lastWeight - firstWeight
-        let percentChange = (weightChange / firstWeight) * 100
+        let percentChange = firstWeight > 0 ? (weightChange / firstWeight) * 100 : 0
 
+        let weightUnit = unitSystem.weightUnit
+        let convert: (Double) -> Double = unitSystem == .imperial
+            ? { $0 * UnitPreferences.kgToLb }
+            : { $0 }
         if weightChange < -0.5 {
             // Losing weight
             let progressText = "Keep it up!"
-
+            let lostDisplay = convert(abs(weightChange))
             insights.append(GeneratedInsight(
                 type: .improvement,
                 title: "Weight trending down",
-                description: String(format: "You've lost %.1f kg (%.1f%%). %@", abs(weightChange), abs(percentChange), progressText),
+                description: String(format: "You've lost %.1f %@ (%.1f%%). %@", lostDisplay, weightUnit, abs(percentChange), progressText),
                 metric: .weight,
                 changePercentage: percentChange,
                 priority: .high,
@@ -748,10 +782,11 @@ struct TrendAnalysisEngine {
             ))
         } else if weightChange > 0.5 {
             // Gaining weight (not ideal for weight loss goal)
+            let gainedDisplay = convert(abs(weightChange))
             insights.append(GeneratedInsight(
                 type: .warning,
                 title: "Weight trending up",
-                description: String(format: "You've gained %.1f kg. Review nutrition and activity.", abs(weightChange)),
+                description: String(format: "You've gained %.1f %@. Review nutrition and activity.", gainedDisplay, weightUnit),
                 metric: .weight,
                 changePercentage: percentChange,
                 priority: .high,
@@ -763,7 +798,7 @@ struct TrendAnalysisEngine {
             insights.append(GeneratedInsight(
                 type: .pattern,
                 title: "Weight is stable",
-                description: String(format: "Holding steady at %.1f kg. Adjust intake for change.", lastWeight),
+                description: String(format: "Holding steady at %.1f %@. Adjust intake for change.", convert(lastWeight), weightUnit),
                 metric: .weight,
                 changePercentage: percentChange,
                 priority: .medium,
@@ -779,7 +814,8 @@ struct TrendAnalysisEngine {
 
     private static func analyzeNutritionTrend(
         contexts: [DailyContext],
-        timeframe: Int
+        timeframe: Int,
+        primaryGoal: UserGoal?
     ) -> [GeneratedInsight] {
         var insights: [GeneratedInsight] = []
 
@@ -817,9 +853,8 @@ struct TrendAnalysisEngine {
         let proteinEntries = contexts.compactMap { $0.proteinGrams }
         if proteinEntries.count >= 3 {
             let avgProtein = Double(proteinEntries.reduce(0, +)) / Double(proteinEntries.count)
-            let goalService = UserGoalService.shared
 
-            if goalService.primaryGoal == .performance && avgProtein < 120 {
+            if primaryGoal == .performance && avgProtein < 120 {
                 insights.append(GeneratedInsight(
                     type: .recommendation,
                     title: "Protein could be higher",
@@ -974,18 +1009,36 @@ struct TrendAnalysisEngine {
         workouts: [AnalyzableWorkout],
         contexts: [DailyContext],
         recoveries: [NextDayRecovery],
-        timeframe: Int
+        timeframe: Int,
+        weightEntries: [(date: Date, kg: Double)],
+        showWeightUI: Bool,
+        unitSystem: UnitSystem
     ) -> [MetricTrend] {
         var trends: [MetricTrend] = []
 
-        // HRV Trend (simulated if no real data)
-        if let context = contexts.first, let hrv = context.hrvScore {
+        // HRV Trend — uses real historical values sorted by date
+        let hrvEntries = contexts.compactMap { ctx -> (date: Date, hrv: Double)? in
+            guard let hrv = ctx.hrvScore, hrv > 0 else { return nil }
+            return (ctx.date, hrv)
+        }.sorted { $0.date < $1.date }
+
+        if let latestHrv = hrvEntries.last?.hrv {
+            let hrvValues = hrvEntries.map { $0.hrv }
+            let changeText: String
+            if hrvValues.count >= 2 {
+                let diff = latestHrv - hrvValues.first!
+                changeText = String(format: "%@%.0f ms", diff >= 0 ? "+" : "", diff)
+            } else {
+                changeText = "1 entry"
+            }
+            let maxHrv = hrvValues.max() ?? 100
+            let hrvDataPoints = hrvValues.map { CGFloat($0 / maxHrv) }
             trends.append(MetricTrend(
                 title: "HRV Trend",
-                currentValue: "\(Int(hrv))ms",
-                change: "+\(Int.random(in: 5...15))%",
+                currentValue: "\(Int(latestHrv))ms",
+                change: changeText,
                 isPositive: true,
-                dataPoints: generateTrendData(baseValue: hrv / 100, variance: 0.1),
+                dataPoints: hrvDataPoints,
                 color: "olive"
             ))
         } else {
@@ -1021,54 +1074,106 @@ struct TrendAnalysisEngine {
                 intensityLabel = "Very High"
             }
 
+            // Chart points are real per-workout intensity values in chronological order
+            let sortedWorkouts = workouts.sorted { $0.workout.startDate < $1.workout.startDate }
+            let intensityPoints = sortedWorkouts.map { w -> CGFloat in
+                switch w.workout.intensity {
+                case .low: return 0.25
+                case .moderate: return 0.5
+                case .high: return 0.75
+                case .max: return 1.0
+                }
+            }
             trends.append(MetricTrend(
                 title: "Avg Intensity",
                 currentValue: intensityLabel,
-                change: "Stable",
+                change: "\(workouts.count) sessions",
                 isPositive: true,
-                dataPoints: generateTrendData(baseValue: avgIntensity, variance: 0.15),
+                dataPoints: intensityPoints,
                 color: "navy"
             ))
         }
 
-        // Recovery Score
+        // Recovery Score — single real data point (today's recovery)
         if let recovery = recoveries.first {
+            let scoreLabel: String
+            switch recovery.overallScore {
+            case 85...: scoreLabel = "Excellent"
+            case 70..<85: scoreLabel = "Good"
+            case 55..<70: scoreLabel = "Fair"
+            default: scoreLabel = "Low"
+            }
             trends.append(MetricTrend(
                 title: "Recovery Score",
                 currentValue: "\(recovery.overallScore)",
-                change: recovery.overallScore >= 70 ? "+8%" : "-5%",
+                change: scoreLabel,
                 isPositive: recovery.overallScore >= 70,
-                dataPoints: generateTrendData(baseValue: Double(recovery.overallScore) / 100, variance: 0.1),
+                dataPoints: [CGFloat(Double(recovery.overallScore) / 100)],
                 color: recovery.overallScore >= 70 ? "olive" : "coral"
             ))
         }
 
         // Weight Trend (only for weight_loss goal)
-        let goalService = UserGoalService.shared
-        if goalService.shouldShowWeightUI {
-            let weights = contexts.compactMap { $0.weightKg }.sorted()
-            if let lastWeight = weights.last {
+        // Uses pre-fetched weightEntries sorted by DATE ascending — never by value
+        if showWeightUI {
+            if let latestEntry = weightEntries.last {
+                let latestKg = latestEntry.kg
                 let changeText: String
                 let isPositive: Bool
-                if weights.count >= 2 {
-                    let first = weights.first!
-                    let diff = lastWeight - first
-                    changeText = String(format: "%@%.1f kg", diff >= 0 ? "+" : "", diff)
+                let wUnit = unitSystem.weightUnit
+                let convert: (Double) -> Double = unitSystem == .imperial
+                    ? { $0 * UnitPreferences.kgToLb }
+                    : { $0 }
+                if weightEntries.count >= 2 {
+                    let firstKg = weightEntries.first!.kg
+                    let diff = latestKg - firstKg
+                    let diffDisplay = convert(abs(diff))
+                    changeText = String(format: "%@%.1f %@", diff >= 0 ? "+" : "-", diffDisplay, wUnit)
                     isPositive = diff < 0 // For weight loss, losing is positive
                 } else {
                     changeText = "1 entry"
                     isPositive = true
                 }
 
+                let weightValues = weightEntries.map { $0.kg }
+                let latestDisplay = convert(latestKg)
                 trends.append(MetricTrend(
                     title: "Weight",
-                    currentValue: String(format: "%.1f kg", lastWeight),
+                    currentValue: String(format: "%.1f %@", latestDisplay, wUnit),
                     change: changeText,
                     isPositive: isPositive,
-                    dataPoints: generateWeightTrendData(weights: weights),
+                    dataPoints: generateWeightTrendData(weights: weightValues),
                     color: isPositive ? "olive" : "coral"
                 ))
             }
+        }
+
+        // Sleep Trend — avg of days with logged sleep only, sorted by date
+        let sleepEntries = contexts.compactMap { ctx -> (date: Date, hours: Double)? in
+            guard ctx.sleepHours > 0 else { return nil }
+            return (ctx.date, ctx.sleepHours)
+        }.sorted { $0.date < $1.date }
+
+        if !sleepEntries.isEmpty {
+            let sleepHours = sleepEntries.map { $0.hours }
+            let avgSleep = sleepHours.reduce(0, +) / Double(sleepHours.count)
+            let changeText: String
+            if sleepHours.count >= 2 {
+                let diff = sleepHours.last! - sleepHours.first!
+                changeText = String(format: "%@%.1f h", diff >= 0 ? "+" : "", diff)
+            } else {
+                changeText = "\(sleepHours.count) entr\(sleepHours.count == 1 ? "y" : "ies")"
+            }
+            let maxH = sleepHours.max() ?? 8
+            let dataPoints = sleepHours.map { CGFloat($0 / max(maxH, 1)) }
+            trends.append(MetricTrend(
+                title: "Sleep",
+                currentValue: String(format: "%.1f hrs", avgSleep),
+                change: changeText,
+                isPositive: avgSleep >= 7.0,
+                dataPoints: dataPoints,
+                color: "olive"
+            ))
         }
 
         // Hydration Trend
@@ -1077,10 +1182,17 @@ struct TrendAnalysisEngine {
             let avgWater = Double(waterEntries.reduce(0, +)) / Double(waterEntries.count)
             let avgLiters = avgWater / 1000.0
             let isGood = avgLiters >= 2.0
+            let hydrationDisplay: String = {
+                if unitSystem == .imperial {
+                    return String(format: "%.0f oz", avgLiters * UnitPreferences.litersToOz)
+                } else {
+                    return String(format: "%.1f L", avgLiters)
+                }
+            }()
 
             trends.append(MetricTrend(
                 title: "Hydration",
-                currentValue: String(format: "%.1fL", avgLiters),
+                currentValue: hydrationDisplay,
                 change: isGood ? "On target" : "Below target",
                 isPositive: isGood,
                 dataPoints: generateTrendData(baseValue: min(avgLiters / 3.0, 1.0), variance: 0.1),

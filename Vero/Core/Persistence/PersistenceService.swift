@@ -1,6 +1,6 @@
 //
 //  PersistenceService.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Service for managing local data persistence using SwiftData.
 //  Handles CRUD operations for workouts, contexts, check-ins, and recovery data.
@@ -53,7 +53,9 @@ final class PersistenceService: ObservableObject {
         // Check if we need to reset the store due to schema changes
         let lastSchemaVersion = UserDefaults.standard.integer(forKey: "swiftDataSchemaVersion")
         if lastSchemaVersion != Self.schemaVersion {
+            #if DEBUG
             print("PersistenceService: Schema version changed (\(lastSchemaVersion) → \(Self.schemaVersion)), resetting store...")
+            #endif
             Self.deleteExistingStore()
             UserDefaults.standard.set(Self.schemaVersion, forKey: "swiftDataSchemaVersion")
         }
@@ -79,12 +81,18 @@ final class PersistenceService: ObservableObject {
                 configurations: [modelConfiguration]
             )
 
+            #if DEBUG
             print("PersistenceService: SwiftData container initialized successfully (schema v\(Self.schemaVersion))")
+            #endif
 
         } catch {
             // Schema mismatch - try to recover by deleting the store
+            #if DEBUG
             print("PersistenceService: ⚠️ Container creation failed: \(error)")
+            #endif
+            #if DEBUG
             print("PersistenceService: Attempting recovery by deleting incompatible store...")
+            #endif
 
             Self.deleteExistingStore()
 
@@ -109,7 +117,9 @@ final class PersistenceService: ObservableObject {
                 )
 
                 UserDefaults.standard.set(Self.schemaVersion, forKey: "swiftDataSchemaVersion")
+                #if DEBUG
                 print("PersistenceService: ✅ Recovery successful - store recreated")
+                #endif
 
             } catch {
                 fatalError("Failed to create SwiftData container even after reset: \(error)")
@@ -123,7 +133,9 @@ final class PersistenceService: ObservableObject {
 
         // SwiftData stores in Application Support directory
         guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            #if DEBUG
             print("PersistenceService: Could not find Application Support directory")
+            #endif
             return
         }
 
@@ -141,10 +153,14 @@ final class PersistenceService: ObservableObject {
             do {
                 if fileManager.fileExists(atPath: url.path) {
                     try fileManager.removeItem(at: url)
+                    #if DEBUG
                     print("PersistenceService: Deleted \(url.lastPathComponent)")
+                    #endif
                 }
             } catch {
+                #if DEBUG
                 print("PersistenceService: Failed to delete \(url.lastPathComponent): \(error)")
+                #endif
             }
         }
     }
@@ -155,36 +171,62 @@ final class PersistenceService: ObservableObject {
     /// If a workout with the same ID exists, it's updated; otherwise, a new one is created.
     @discardableResult
     func saveWorkout(_ workout: Workout) -> PersistedWorkout {
+        #if DEBUG
         print("💾 PersistenceService: ─────────────────────────────────")
+        #endif
+        #if DEBUG
         print("💾 PersistenceService: SAVING WORKOUT")
+        #endif
+        #if DEBUG
         print("💾 PersistenceService: ID: \(workout.id)")
+        #endif
+        #if DEBUG
         print("💾 PersistenceService: Type: \(workout.type.rawValue)")
+        #endif
+        #if DEBUG
         print("💾 PersistenceService: Source: \(workout.source.rawValue)")
+        #endif
+        #if DEBUG
         print("💾 PersistenceService: Duration: \(Int(workout.duration / 60)) min")
+        #endif
+        #if DEBUG
         print("💾 PersistenceService: Calories: \(workout.calories)")
+        #endif
         if let avgHR = workout.averageHeartRate {
+            #if DEBUG
             print("💾 PersistenceService: Avg HR: \(avgHR) bpm")
+            #endif
         }
 
         // Check if workout already exists
         if let existing = fetchPersistedWorkout(id: workout.id) {
             // Update existing workout
+            #if DEBUG
             print("💾 PersistenceService: ↻ Updating existing workout")
+            #endif
             updatePersistedWorkout(existing, from: workout)
             return existing
         }
 
         // Create new persisted workout
+        #if DEBUG
         print("💾 PersistenceService: ✚ Creating new workout record")
+        #endif
         let persisted = PersistedWorkout(from: workout)
         context.insert(persisted)
 
         do {
             try context.save()
+            #if DEBUG
             print("💾 PersistenceService: ✅ WORKOUT SAVED SUCCESSFULLY")
+            #endif
+            #if DEBUG
             print("💾 PersistenceService: ─────────────────────────────────")
+            #endif
         } catch {
+            #if DEBUG
             print("💾 PersistenceService: ❌ ERROR SAVING WORKOUT: \(error)")
+            #endif
         }
 
         return persisted
@@ -213,20 +255,34 @@ final class PersistenceService: ObservableObject {
         do {
             try context.save()
         } catch {
+            #if DEBUG
             print("PersistenceService: Error updating workout: \(error)")
+            #endif
         }
     }
 
     /// Save interpretation data for a workout
     func saveWorkoutInterpretation(workoutId: UUID, interpretation: WorkoutInterpretation) {
+        #if DEBUG
         print("💾 PersistenceService: ─────────────────────────────────")
+        #endif
+        #if DEBUG
         print("💾 PersistenceService: SAVING INTERPRETATION")
+        #endif
+        #if DEBUG
         print("💾 PersistenceService: Workout ID: \(workoutId)")
+        #endif
+        #if DEBUG
         print("💾 PersistenceService: Summary: \(interpretation.summaryText.prefix(50))...")
+        #endif
+        #if DEBUG
         print("💾 PersistenceService: Sentiment: \(interpretation.sentiment)")
+        #endif
 
         guard let persisted = fetchPersistedWorkout(id: workoutId) else {
+            #if DEBUG
             print("💾 PersistenceService: ❌ Workout not found for interpretation")
+            #endif
             return
         }
 
@@ -234,10 +290,16 @@ final class PersistenceService: ObservableObject {
 
         do {
             try context.save()
+            #if DEBUG
             print("💾 PersistenceService: ✅ INTERPRETATION SAVED")
+            #endif
+            #if DEBUG
             print("💾 PersistenceService: ─────────────────────────────────")
+            #endif
         } catch {
+            #if DEBUG
             print("💾 PersistenceService: ❌ ERROR SAVING INTERPRETATION: \(error)")
+            #endif
         }
     }
 
@@ -251,7 +313,9 @@ final class PersistenceService: ObservableObject {
             let results = try context.fetch(descriptor)
             return results.first
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching workout: \(error)")
+            #endif
             return nil
         }
     }
@@ -267,7 +331,9 @@ final class PersistenceService: ObservableObject {
             let results = try context.fetch(descriptor)
             return results.first?.toWorkout()
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching latest workout: \(error)")
+            #endif
             return nil
         }
     }
@@ -283,7 +349,9 @@ final class PersistenceService: ObservableObject {
             let results = try context.fetch(descriptor)
             return results.map { $0.toWorkout() }
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching recent workouts: \(error)")
+            #endif
             return []
         }
     }
@@ -299,7 +367,9 @@ final class PersistenceService: ObservableObject {
             let results = try context.fetch(descriptor)
             return results.map { $0.toWorkout() }
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching workouts in range: \(error)")
+            #endif
             return []
         }
     }
@@ -309,31 +379,55 @@ final class PersistenceService: ObservableObject {
     /// Save or update daily context
     @discardableResult
     func saveDailyContext(_ context: DailyContext) -> PersistedDailyContext {
+        #if DEBUG
         print("📊 PersistenceService: ══════════════════════════════════════════════════")
+        #endif
+        #if DEBUG
         print("📊 PersistenceService: SAVING DAILY CONTEXT")
+        #endif
+        #if DEBUG
         print("📊 PersistenceService: Date: \(context.date)")
+        #endif
+        #if DEBUG
         print("📊 PersistenceService: Water: \(context.waterIntakeMl ?? 0)ml")
+        #endif
+        #if DEBUG
         print("📊 PersistenceService: Calories: \(context.calories ?? 0)")
+        #endif
+        #if DEBUG
         print("📊 PersistenceService: Weight: \(context.weightKg ?? 0)kg")
+        #endif
 
         // Check if context for today already exists
         if let existing = fetchTodayContext() {
+            #if DEBUG
             print("📊 PersistenceService: Found existing context, updating...")
+            #endif
             updatePersistedContext(existing, from: context)
             return existing
         }
 
+        #if DEBUG
         print("📊 PersistenceService: Creating new context...")
+        #endif
         let persisted = PersistedDailyContext(from: context)
         self.context.insert(persisted)
 
         do {
             try self.context.save()
+            #if DEBUG
             print("📊 PersistenceService: ✅ Saved daily context for \(context.date)")
+            #endif
+            #if DEBUG
             print("📊 PersistenceService: ══════════════════════════════════════════════════")
+            #endif
         } catch {
+            #if DEBUG
             print("📊 PersistenceService: ❌ Error saving daily context: \(error)")
+            #endif
+            #if DEBUG
             print("📊 PersistenceService: ══════════════════════════════════════════════════")
+            #endif
         }
 
         return persisted
@@ -361,9 +455,13 @@ final class PersistenceService: ObservableObject {
 
         do {
             try context.save()
+            #if DEBUG
             print("📊 PersistenceService: ✅ Updated daily context - water=\(ctx.waterIntakeMl ?? 0)ml, weight=\(ctx.weightKg ?? 0)kg")
+            #endif
         } catch {
+            #if DEBUG
             print("📊 PersistenceService: ❌ Error updating daily context: \(error)")
+            #endif
         }
     }
 
@@ -382,7 +480,9 @@ final class PersistenceService: ObservableObject {
             let results = try context.fetch(descriptor)
             return results.first
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching today's context: \(error)")
+            #endif
             return nil
         }
     }
@@ -403,7 +503,9 @@ final class PersistenceService: ObservableObject {
             let results = try context.fetch(descriptor)
             return results.map { $0.toDailyContext() }
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching recent daily contexts: \(error)")
+            #endif
             return []
         }
     }
@@ -422,7 +524,9 @@ final class PersistenceService: ObservableObject {
             let results = try context.fetch(descriptor)
             return results.first?.toDailyContext()
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching daily context for date: \(error)")
+            #endif
             return nil
         }
     }
@@ -430,16 +534,18 @@ final class PersistenceService: ObservableObject {
     /// Fetch the last recorded weight (from any daily context that has weight data)
     func fetchLastRecordedWeight() -> Double? {
         var descriptor = FetchDescriptor<PersistedDailyContext>(
-            predicate: #Predicate { $0.weightKg != nil && $0.weightKg! > 0 },
+            predicate: #Predicate { $0.weightKg != nil },
             sortBy: [SortDescriptor(\.date, order: .reverse)]
         )
-        descriptor.fetchLimit = 1
+        descriptor.fetchLimit = 10
 
         do {
             let results = try context.fetch(descriptor)
-            return results.first?.weightKg
+            return results.first(where: { ($0.weightKg ?? 0) > 0 })?.weightKg
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching last weight: \(error)")
+            #endif
             return nil
         }
     }
@@ -452,12 +558,22 @@ final class PersistenceService: ObservableObject {
         feeling: String,
         note: String?
     ) {
+        #if DEBUG
         print("💾 PersistenceService: ─────────────────────────────────")
+        #endif
+        #if DEBUG
         print("💾 PersistenceService: SAVING POST-WORKOUT CHECK-IN")
+        #endif
+        #if DEBUG
         print("💾 PersistenceService: Workout ID: \(workoutId)")
+        #endif
+        #if DEBUG
         print("💾 PersistenceService: Feeling: \(feeling)")
+        #endif
         if let note = note, !note.isEmpty {
+            #if DEBUG
             print("💾 PersistenceService: Note: \(note)")
+            #endif
         }
 
         // Create the check-in record
@@ -467,22 +583,34 @@ final class PersistenceService: ObservableObject {
             note: note
         )
         context.insert(checkIn)
+        #if DEBUG
         print("💾 PersistenceService: ✚ Created check-in record")
+        #endif
 
         // Also update the workout with check-in data
         if let workout = fetchPersistedWorkout(id: workoutId) {
             workout.updateWithCheckIn(feeling: feeling, note: note)
+            #if DEBUG
             print("💾 PersistenceService: ↻ Updated workout with check-in data")
+            #endif
         } else {
+            #if DEBUG
             print("💾 PersistenceService: ⚠️ Workout not found for check-in update")
+            #endif
         }
 
         do {
             try context.save()
+            #if DEBUG
             print("💾 PersistenceService: ✅ CHECK-IN SAVED SUCCESSFULLY")
+            #endif
+            #if DEBUG
             print("💾 PersistenceService: ─────────────────────────────────")
+            #endif
         } catch {
+            #if DEBUG
             print("💾 PersistenceService: ❌ ERROR SAVING CHECK-IN: \(error)")
+            #endif
         }
     }
 
@@ -496,7 +624,9 @@ final class PersistenceService: ObservableObject {
             let results = try context.fetch(descriptor)
             return results.first
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching post-workout check-in: \(error)")
+            #endif
             return nil
         }
     }
@@ -518,9 +648,13 @@ final class PersistenceService: ObservableObject {
 
         do {
             try context.save()
+            #if DEBUG
             print("PersistenceService: Saved next day recovery for \(recovery.date)")
+            #endif
         } catch {
+            #if DEBUG
             print("PersistenceService: Error saving next day recovery: \(error)")
+            #endif
         }
 
         return persisted
@@ -539,9 +673,13 @@ final class PersistenceService: ObservableObject {
 
             do {
                 try context.save()
+                #if DEBUG
                 print("PersistenceService: Updated next day recovery with check-in")
+                #endif
             } catch {
+                #if DEBUG
                 print("PersistenceService: Error updating recovery check-in: \(error)")
+                #endif
             }
             return
         }
@@ -554,9 +692,13 @@ final class PersistenceService: ObservableObject {
 
             do {
                 try context.save()
+                #if DEBUG
                 print("PersistenceService: Updated workout's recovery with check-in")
+                #endif
             } catch {
+                #if DEBUG
                 print("PersistenceService: Error updating recovery check-in: \(error)")
+                #endif
             }
         }
     }
@@ -571,7 +713,9 @@ final class PersistenceService: ObservableObject {
             let results = try context.fetch(descriptor)
             return results.first
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching recovery: \(error)")
+            #endif
             return nil
         }
     }
@@ -591,7 +735,9 @@ final class PersistenceService: ObservableObject {
             let results = try context.fetch(descriptor)
             return results.first?.toNextDayRecovery()
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching today's recovery: \(error)")
+            #endif
             return nil
         }
     }
@@ -605,9 +751,13 @@ final class PersistenceService: ObservableObject {
 
         do {
             try context.save()
+            #if DEBUG
             print("PersistenceService: Saved general check-in")
+            #endif
         } catch {
+            #if DEBUG
             print("PersistenceService: Error saving check-in: \(error)")
+            #endif
         }
     }
 
@@ -622,7 +772,9 @@ final class PersistenceService: ObservableObject {
             let results = try context.fetch(descriptor)
             return results.map { $0.toCheckIn() }
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching check-ins: \(error)")
+            #endif
             return []
         }
     }
@@ -637,8 +789,112 @@ final class PersistenceService: ObservableObject {
             let results = try context.fetch(descriptor)
             return results.first?.toCheckIn()
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching check-in by ID: \(error)")
+            #endif
             return nil
+        }
+    }
+
+    /// Batch fetch: all workout IDs mapped to their updatedAt timestamps.
+    /// Used by sync service to avoid N individual fetchPersistedWorkout(id:) calls.
+    func fetchAllWorkoutTimestamps() -> [UUID: Date] {
+        let descriptor = FetchDescriptor<PersistedWorkout>()
+        do {
+            let results = try context.fetch(descriptor)
+            return Dictionary(uniqueKeysWithValues: results.map { ($0.workoutId, $0.updatedAt) })
+        } catch {
+            #if DEBUG
+            print("PersistenceService: Error fetching workout timestamps: \(error)")
+            #endif
+            return [:]
+        }
+    }
+
+    /// Batch fetch: all persisted daily context dates (normalized to start-of-day).
+    /// Used by sync service to avoid N individual fetchDailyContext(for:) calls.
+    func fetchAllContextDates() -> Set<Date> {
+        let descriptor = FetchDescriptor<PersistedDailyContext>()
+        do {
+            let results = try context.fetch(descriptor)
+            let cal = Calendar.current
+            return Set(results.map { cal.startOfDay(for: $0.date) })
+        } catch {
+            #if DEBUG
+            print("PersistenceService: Error fetching context dates: \(error)")
+            #endif
+            return []
+        }
+    }
+
+    /// Merge a cloud-sourced DailyContext into local store.
+    /// - Finds the local record for the same calendar day (if any).
+    /// - If found: fills in nil/zero local fields from cloud values; never overwrites existing local data.
+    /// - If not found: inserts the cloud record directly.
+    /// - Returns `true` if merged into existing, `false` if a new record was created.
+    @discardableResult
+    func mergeCloudDailyContext(_ cloudContext: DailyContext) -> Bool {
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: cloudContext.date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+
+        let descriptor = FetchDescriptor<PersistedDailyContext>(
+            predicate: #Predicate { $0.date >= startOfDay && $0.date < endOfDay },
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+
+        do {
+            let results = try context.fetch(descriptor)
+            if let existing = results.first {
+                // Only fill in fields that are missing locally
+                if existing.sleepHours == 0, cloudContext.sleepHours > 0 {
+                    existing.sleepHours = cloudContext.sleepHours
+                }
+                if existing.waterIntakeMl == nil, let v = cloudContext.waterIntakeMl { existing.waterIntakeMl = v }
+                if existing.weightKg == nil, let v = cloudContext.weightKg { existing.weightKg = v }
+                if existing.bodyFatPercentage == nil, let v = cloudContext.bodyFatPercentage { existing.bodyFatPercentage = v }
+                if existing.calories == nil, let v = cloudContext.calories { existing.calories = v }
+                if existing.proteinGrams == nil, let v = cloudContext.proteinGrams { existing.proteinGrams = v }
+                if existing.carbsGrams == nil, let v = cloudContext.carbsGrams { existing.carbsGrams = v }
+                if existing.fatGrams == nil, let v = cloudContext.fatGrams { existing.fatGrams = v }
+                if existing.restingHeartRate == nil, let v = cloudContext.restingHeartRate { existing.restingHeartRate = v }
+                if existing.hrvScore == nil, let v = cloudContext.hrvScore { existing.hrvScore = v }
+                existing.updatedAt = Date()
+
+                try context.save()
+                #if DEBUG
+                print("📊 PersistenceService: ↔ Merged cloud context date=\(startOfDay) water=\(cloudContext.waterIntakeMl?.description ?? "nil")ml sleep=\(cloudContext.sleepHours)h weight=\(cloudContext.weightKg?.description ?? "nil")kg")
+                #endif
+                return true
+            } else {
+                let persisted = PersistedDailyContext(from: cloudContext)
+                context.insert(persisted)
+                try context.save()
+                #if DEBUG
+                print("📊 PersistenceService: ✚ Inserted cloud context date=\(startOfDay) water=\(cloudContext.waterIntakeMl?.description ?? "nil")ml sleep=\(cloudContext.sleepHours)h weight=\(cloudContext.weightKg?.description ?? "nil")kg")
+                #endif
+                return false
+            }
+        } catch {
+            #if DEBUG
+            print("📊 PersistenceService: ❌ mergeCloudDailyContext failed: \(error)")
+            #endif
+            return false
+        }
+    }
+
+    /// Batch fetch: all persisted check-in IDs.
+    /// Used by sync service to avoid N individual fetchCheckIn(id:) calls.
+    func fetchAllCheckInIds() -> Set<UUID> {
+        let descriptor = FetchDescriptor<PersistedCheckIn>()
+        do {
+            let results = try context.fetch(descriptor)
+            return Set(results.map { $0.checkInId })
+        } catch {
+            #if DEBUG
+            print("PersistenceService: Error fetching check-in IDs: \(error)")
+            #endif
+            return []
         }
     }
 
@@ -652,7 +908,9 @@ final class PersistenceService: ObservableObject {
         do {
             return try context.fetch(descriptor)
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching post-workout check-ins: \(error)")
+            #endif
             return []
         }
     }
@@ -668,7 +926,9 @@ final class PersistenceService: ObservableObject {
             let results = try context.fetch(descriptor)
             return results.map { $0.toNextDayRecovery() }
         } catch {
+            #if DEBUG
             print("PersistenceService: Error fetching recoveries: \(error)")
+            #endif
             return []
         }
     }
@@ -698,7 +958,9 @@ final class PersistenceService: ObservableObject {
             let results = try context.fetch(descriptor)
             return results.count
         } catch {
+            #if DEBUG
             print("PersistenceService: Error counting workouts: \(error)")
+            #endif
             return 0
         }
     }
@@ -712,6 +974,12 @@ final class PersistenceService: ObservableObject {
 
         do {
             let results = try context.fetch(descriptor)
+            #if DEBUG
+            print("📈 [STREAK] Recomputing streak from \(results.count) local workouts (most recent 30)")
+            if let first = results.first {
+                print("📈 [STREAK] Most recent workout: \(first.startDate)")
+            }
+            #endif
             guard !results.isEmpty else { return 0 }
 
             let calendar = Calendar.current
@@ -739,7 +1007,9 @@ final class PersistenceService: ObservableObject {
 
             return streak
         } catch {
+            #if DEBUG
             print("PersistenceService: Error calculating streak: \(error)")
+            #endif
             return 0
         }
     }
@@ -778,7 +1048,9 @@ final class PersistenceService: ObservableObject {
 
             return longestStreak
         } catch {
+            #if DEBUG
             print("PersistenceService: Error calculating longest streak: \(error)")
+            #endif
             return 0
         }
     }
@@ -808,7 +1080,7 @@ final class PersistenceService: ObservableObject {
         // Find daily context from around a week ago (within 2 days tolerance)
         var descriptor = FetchDescriptor<PersistedDailyContext>(
             predicate: #Predicate<PersistedDailyContext> { context in
-                context.weightKg != nil && context.weightKg! > 0
+                context.weightKg != nil
             },
             sortBy: [SortDescriptor(\.date, order: .reverse)]
         )
@@ -820,13 +1092,15 @@ final class PersistenceService: ObservableObject {
             // Find entry closest to a week ago
             for context in contexts {
                 let daysDiff = abs(calendar.dateComponents([.day], from: weekAgo, to: context.date).day ?? 0)
-                if daysDiff <= 2 && context.weightKg != nil && context.weightKg! > 0 {
-                    return currentWeight - context.weightKg!
+                if daysDiff <= 2, let w = context.weightKg, w > 0 {
+                    return currentWeight - w
                 }
             }
             return nil
         } catch {
+            #if DEBUG
             print("PersistenceService: Error calculating weekly weight delta: \(error)")
+            #endif
             return nil
         }
     }
@@ -864,7 +1138,9 @@ final class PersistenceService: ObservableObject {
 
     /// Clear all persisted data (for account deletion)
     func clearAllData() {
+        #if DEBUG
         print("🗑️ PersistenceService: Clearing all data...")
+        #endif
 
         do {
             // Delete all workouts
@@ -873,7 +1149,9 @@ final class PersistenceService: ObservableObject {
             for workout in workouts {
                 context.delete(workout)
             }
+            #if DEBUG
             print("🗑️ PersistenceService: Deleted \(workouts.count) workouts")
+            #endif
 
             // Delete all daily contexts
             let contextDescriptor = FetchDescriptor<PersistedDailyContext>()
@@ -881,7 +1159,9 @@ final class PersistenceService: ObservableObject {
             for ctx in contexts {
                 context.delete(ctx)
             }
+            #if DEBUG
             print("🗑️ PersistenceService: Deleted \(contexts.count) daily contexts")
+            #endif
 
             // Delete all post-workout check-ins
             let checkInDescriptor = FetchDescriptor<PersistedPostWorkoutCheckIn>()
@@ -889,7 +1169,9 @@ final class PersistenceService: ObservableObject {
             for checkIn in checkIns {
                 context.delete(checkIn)
             }
+            #if DEBUG
             print("🗑️ PersistenceService: Deleted \(checkIns.count) check-ins")
+            #endif
 
             // Delete all next-day recoveries
             let recoveryDescriptor = FetchDescriptor<PersistedNextDayRecovery>()
@@ -897,14 +1179,30 @@ final class PersistenceService: ObservableObject {
             for recovery in recoveries {
                 context.delete(recovery)
             }
+            #if DEBUG
             print("🗑️ PersistenceService: Deleted \(recoveries.count) recoveries")
+            #endif
+
+            // Delete all check-ins
+            let checkInBaseDescriptor = FetchDescriptor<PersistedCheckIn>()
+            let checkInBases = try context.fetch(checkInBaseDescriptor)
+            for checkIn in checkInBases {
+                context.delete(checkIn)
+            }
+            #if DEBUG
+            print("🗑️ PersistenceService: Deleted \(checkInBases.count) base check-ins")
+            #endif
 
             // Save changes
             try context.save()
+            #if DEBUG
             print("🗑️ PersistenceService: ✅ All data cleared successfully")
+            #endif
 
         } catch {
+            #if DEBUG
             print("🗑️ PersistenceService: ❌ Error clearing data: \(error)")
+            #endif
         }
     }
 }

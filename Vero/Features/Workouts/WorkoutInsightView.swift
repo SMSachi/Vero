@@ -1,6 +1,6 @@
 //
 //  WorkoutInsightView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Immersive, narrative workout insight experience
 //  Feels like a calm, intelligent interpretation — not a stats dashboard
@@ -21,6 +21,9 @@ struct WorkoutInsightView: View {
     @State private var bulletsVisible = false
     @State private var takeawayVisible = false
     @State private var pathAnimated = false
+
+    // AI enhancement (Pro / DEBUG bypass)
+    @State private var aiEnhancement: EnhancedAnalysis?
 
     var body: some View {
         GeometryReader { geometry in
@@ -148,6 +151,17 @@ struct WorkoutInsightView: View {
         .onAppear {
             startEntranceSequence()
         }
+        .task {
+            guard let interp = interpretation else { return }
+            let analysisOutput = AnalysisOutput(from: interp, workout: workout, context: nil)
+            #if DEBUG
+            print("🤖 OpenRouter: 🖥️ WorkoutInsightView .task — requesting AI enhancement for workout \(workout.id)")
+            #endif
+            let result = await OpenRouterService.shared.enhanceAnalysis(analysisOutput, workoutId: workout.id)
+            if result.source == .ai {
+                aiEnhancement = result
+            }
+        }
     }
 
     // MARK: - Narrative Content
@@ -165,7 +179,11 @@ struct WorkoutInsightView: View {
     }
 
     private var narrativeHeadline: String {
-        // Priority 1: Use InterpretationEngine summary
+        // Priority 1: AI-enhanced summary
+        if let ai = aiEnhancement {
+            return ai.enhancedSummary
+        }
+        // Priority 2: Use InterpretationEngine summary
         if let interp = interpretation {
             return interp.summaryText
         }
@@ -189,7 +207,11 @@ struct WorkoutInsightView: View {
     }
 
     private var explanationText: String {
-        // Priority 1: Use InterpretationEngine explanation
+        // Priority 1: AI-enhanced interpretation
+        if let ai = aiEnhancement {
+            return ai.enhancedInterpretation
+        }
+        // Priority 2: Use InterpretationEngine explanation
         if let interp = interpretation {
             return interp.interpretationText
         }
@@ -292,7 +314,11 @@ struct WorkoutInsightView: View {
     }
 
     private var takeawayText: String {
-        // Priority 1: Use InterpretationEngine recommendation
+        // Priority 1: AI-enhanced recommendation
+        if let ai = aiEnhancement, let rec = ai.enhancedRecommendation {
+            return rec
+        }
+        // Priority 2: Use InterpretationEngine recommendation
         if let interp = interpretation {
             return interp.recommendationText
         }

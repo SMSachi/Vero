@@ -1,6 +1,6 @@
 //
 //  WorkoutSummaryView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Premium, editorial workout summary screen
 //

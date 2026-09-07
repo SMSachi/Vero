@@ -1,6 +1,6 @@
 //
 //  CinematicIntroView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Cinematic mountain journey with zoom animation
 //  Starts zoomed-in, climbs upward, zooms out to reveal the mountain
@@ -49,7 +49,7 @@ struct CinematicIntroView: View {
             pathProgress: 0.75
         ),
         JourneyStep(
-            text: "Insio helps you understand them.",
+            text: "WellPattern helps you understand them.",
             zoomScale: 1.0,
             offsetY: -20,
             pathProgress: 1.0
@@ -131,7 +131,7 @@ struct CinematicIntroView: View {
                         VStack(spacing: AppSpacing.lg) {
                             // Logo reveal
                             VStack(spacing: AppSpacing.xs) {
-                                Text("insio")
+                                Text("WellPattern")
                                     .font(.system(size: 40, weight: .bold, design: .rounded))
                                     .foregroundStyle(AppColors.navy)
 

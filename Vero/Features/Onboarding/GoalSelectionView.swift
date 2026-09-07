@@ -1,6 +1,6 @@
 //
 //  GoalSelectionView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Goals selection - unified design system.
 //  CRITICAL: Weight UI is ONLY shown if goal == weight_loss

@@ -1,6 +1,6 @@
 //
 //  AppTypography.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Bold, warm typography hierarchy with personality
 //

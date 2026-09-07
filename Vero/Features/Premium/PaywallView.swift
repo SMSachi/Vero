@@ -1,6 +1,6 @@
 //
 //  PaywallView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Premium subscription paywall with tier comparison.
 //  Shows Plus ($4.99/mo) and Pro ($12.99/mo) options.
@@ -17,7 +17,8 @@ struct PaywallView: View {
     @StateObject private var premiumManager = PremiumManager.shared
 
     @State private var selectedTier: SubscriptionTier = .pro
-    @State private var selectedBillingPeriod: BillingPeriod = .yearly
+    // Yearly products are not available at launch — monthly only.
+    private let selectedBillingPeriod: BillingPeriod = .monthly
     @State private var isAnimating = false
     @State private var showRestoreSuccess = false
 
@@ -43,10 +44,6 @@ struct PaywallView: View {
                         TierComparisonView(selectedTier: $selectedTier)
                             .opacity(isAnimating ? 1 : 0)
                             .offset(y: isAnimating ? 0 : 20)
-
-                        // Billing period toggle
-                        BillingPeriodToggle(selectedPeriod: $selectedBillingPeriod)
-                            .opacity(isAnimating ? 1 : 0)
 
                         // Selected tier pricing
                         SelectedTierPricing(
@@ -127,20 +124,10 @@ struct PaywallView: View {
     }
 
     private func subscribe() {
-        let product: Product?
-
-        switch (selectedTier, selectedBillingPeriod) {
-        case (.plus, .monthly):
-            product = storeKit.plusMonthlyProduct
-        case (.plus, .yearly):
-            product = storeKit.plusYearlyProduct
-        case (.pro, .monthly):
-            product = storeKit.proMonthlyProduct
-        case (.pro, .yearly):
-            product = storeKit.proYearlyProduct
-        default:
-            product = nil
-        }
+        // Monthly-only at launch — selectedBillingPeriod is always .monthly
+        let product: Product? = selectedTier == .plus
+            ? storeKit.plusMonthlyProduct
+            : storeKit.proMonthlyProduct
 
         guard let selectedProduct = product else { return }
 
@@ -176,7 +163,7 @@ private struct PaywallHero: View {
             }
 
             VStack(spacing: AppSpacing.xs) {
-                Text("Unlock Insio Premium")
+                Text("Unlock WellPattern Premium")
                     .font(AppTypography.displayMedium)
                     .foregroundStyle(AppColors.textPrimary)
 
@@ -393,14 +380,9 @@ private struct SelectedTierPricing: View {
                         .foregroundStyle(AppColors.textSecondary)
                 }
 
-                if period == .yearly, let perMonth = storeKit.yearlyPricePerMonth(for: tier) {
-                    Text("(\(perMonth)/month)")
-                        .font(AppTypography.bodySmall)
-                        .foregroundStyle(AppColors.textTertiary)
-                }
 
                 if product.hasFreeTrial {
-                    Text("\(product.freeTrialDays ?? InsioConfig.StoreKit.freeTrialDays)-day free trial")
+                    Text("\(product.freeTrialDays ?? WellPatternConfig.StoreKit.freeTrialDays)-day free trial")
                         .font(AppTypography.labelSmall)
                         .foregroundStyle(AppColors.orange)
                         .padding(.top, AppSpacing.xs)
@@ -427,7 +409,7 @@ private struct SelectedTierPricing: View {
                 }
 
                 // Show 3-day free trial message
-                Text("\(InsioConfig.StoreKit.freeTrialDays)-day free trial")
+                Text("\(WellPatternConfig.StoreKit.freeTrialDays)-day free trial")
                     .font(AppTypography.labelSmall)
                     .foregroundStyle(AppColors.orange)
                     .padding(.top, AppSpacing.xs)
@@ -445,22 +427,18 @@ private struct SelectedTierPricing: View {
     }
 
     private var selectedProduct: Product? {
-        switch (tier, period) {
-        case (.plus, .monthly): return storeKit.plusMonthlyProduct
-        case (.plus, .yearly): return storeKit.plusYearlyProduct
-        case (.pro, .monthly): return storeKit.proMonthlyProduct
-        case (.pro, .yearly): return storeKit.proYearlyProduct
+        switch tier {
+        case .plus: return storeKit.plusMonthlyProduct
+        case .pro: return storeKit.proMonthlyProduct
         default: return nil
         }
     }
 
-    /// Fallback prices when StoreKit is not configured
+    /// Fallback prices when StoreKit is not configured (monthly-only launch)
     private var fallbackPrice: String {
-        switch (tier, period) {
-        case (.plus, .monthly): return "$4.99"
-        case (.plus, .yearly): return "$49.99"
-        case (.pro, .monthly): return "$12.99"
-        case (.pro, .yearly): return "$99.99"
+        switch tier {
+        case .plus: return "$4.99"
+        case .pro: return "$12.99"
         default: return "$0.00"
         }
     }
@@ -487,11 +465,9 @@ private struct SubscribeButton: View {
     }
 
     private var selectedProduct: Product? {
-        switch (tier, period) {
-        case (.plus, .monthly): return storeKit.plusMonthlyProduct
-        case (.plus, .yearly): return storeKit.plusYearlyProduct
-        case (.pro, .monthly): return storeKit.proMonthlyProduct
-        case (.pro, .yearly): return storeKit.proYearlyProduct
+        switch tier {
+        case .plus: return storeKit.plusMonthlyProduct
+        case .pro: return storeKit.proMonthlyProduct
         default: return nil
         }
     }
@@ -616,8 +592,6 @@ private struct ProductsUnavailableView: View {
 
     private var icon: String {
         switch reason {
-        case .simulator:
-            return "desktopcomputer"
         case .noActiveAccount:
             return "person.crop.circle.badge.questionmark"
         case .networkError:
@@ -631,8 +605,6 @@ private struct ProductsUnavailableView: View {
 
     private var iconBackgroundColor: Color {
         switch reason {
-        case .simulator:
-            return AppColors.navy
         case .noActiveAccount:
             return AppColors.orange
         case .networkError:
@@ -646,8 +618,6 @@ private struct ProductsUnavailableView: View {
 
     private var title: String {
         switch reason {
-        case .simulator:
-            return "Simulator Mode"
         case .noActiveAccount:
             return "App Store Unavailable"
         case .networkError:
@@ -661,8 +631,6 @@ private struct ProductsUnavailableView: View {
 
     private var message: String {
         switch reason {
-        case .simulator:
-            return "In-app purchases are not available in the iOS Simulator. Test on a real device or use StoreKit Testing."
         case .noActiveAccount:
             return "Please sign in to the App Store to view subscription options."
         case .networkError:
@@ -676,8 +644,6 @@ private struct ProductsUnavailableView: View {
 
     private var developerNote: String {
         switch reason {
-        case .simulator:
-            return "To test purchases: Use a real device with Sandbox account, or configure a StoreKit Configuration file in Xcode."
         case .noActiveAccount:
             return "User is not signed into App Store. On real device, prompt user to sign in via Settings."
         case .networkError:

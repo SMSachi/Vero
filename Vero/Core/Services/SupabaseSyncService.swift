@@ -1,6 +1,6 @@
 //
 //  SupabaseSyncService.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Cloud sync for local-first data architecture.
 //  Syncs: workouts, daily_contexts, check_ins
@@ -650,26 +650,20 @@ final class SupabaseSyncService: ObservableObject {
         print("☁️ SyncService: [DAILY_CONTEXTS] 📥 Received \(records.count) contexts from cloud")
         #endif
 
-        // Batch-fetch all local context dates in ONE @MainActor hop
-        let localDates = persistenceService.fetchAllContextDates()
-        let cal = Calendar.current
-
         var newCount = 0
-        var skippedCount = 0
+        var mergedCount = 0
 
         for record in records {
-            let context = record.toDailyContext()
-
-            if localDates.contains(cal.startOfDay(for: context.date)) {
-                skippedCount += 1
-            } else {
-                persistenceService.saveDailyContext(context)
-                newCount += 1
-            }
+            let cloudContext = record.toDailyContext()
+            #if DEBUG
+            print("☁️ SyncService: [DAILY_CONTEXTS] Processing date=\(record.date) water=\(record.waterMl?.description ?? "nil")ml sleep=\(record.sleepHours?.description ?? "nil")h weight=\(record.weightKg?.description ?? "nil")kg")
+            #endif
+            let wasMerged = persistenceService.mergeCloudDailyContext(cloudContext)
+            if wasMerged { mergedCount += 1 } else { newCount += 1 }
         }
 
         #if DEBUG
-        print("☁️ SyncService: [DAILY_CONTEXTS] Merge complete - New: \(newCount), Skipped: \(skippedCount)")
+        print("☁️ SyncService: [DAILY_CONTEXTS] Merge complete - New: \(newCount), Merged into existing: \(mergedCount)")
         #endif
     }
 
@@ -1046,8 +1040,9 @@ final class SupabaseSyncService: ObservableObject {
             return
         }
 
+        // Use workoutId as the record id so retries upsert the same row instead of inserting duplicates.
         let record = PostWorkoutCheckInSyncRecord(
-            id: UUID(),
+            id: workoutId,
             workoutId: workoutId,
             userId: userId,
             feeling: feeling,
@@ -1096,7 +1091,7 @@ final class SupabaseSyncService: ObservableObject {
 
             try await supabase
                 .from("post_workout_check_ins")
-                .insert(record)
+                .upsert(record, onConflict: "id")
                 .execute()
 
             #if DEBUG
@@ -1675,11 +1670,12 @@ struct DailyContextSyncRecord: Codable {
     // MARK: - Date helpers
 
     /// Formats a Date as YYYY-MM-DD for PostgreSQL `date` columns.
+    /// Uses the device's local timezone so parsed dates align with fetchTodayContext's local-midnight predicate.
     static let dayFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(secondsFromGMT: 0)
+        f.timeZone = TimeZone.current
         return f
     }()
 
@@ -1690,6 +1686,33 @@ struct DailyContextSyncRecord: Codable {
         if let d = DailyContextSyncRecord.dayFormatter.date(from: date) { return d }
         if let d = ISO8601DateFormatter().date(from: date) { return d }
         return Date()
+    }
+
+    // MARK: - Custom encoder: omit sodium_mg (column does not exist in Supabase table)
+    // Synthesized encoder would send "sodium_mg": null, causing a PostgREST column-not-found
+    // error that silently fails every upsert. encodeIfPresent also suppresses null for all
+    // optional fields so Supabase leaves unspecified columns unchanged during upsert.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(userId, forKey: .userId)
+        try c.encode(date, forKey: .date)
+        try c.encodeIfPresent(sleepHours, forKey: .sleepHours)
+        try c.encodeIfPresent(sleepQuality, forKey: .sleepQuality)
+        try c.encodeIfPresent(stressLevel, forKey: .stressLevel)
+        try c.encodeIfPresent(energyLevel, forKey: .energyLevel)
+        try c.encodeIfPresent(restingHeartRate, forKey: .restingHeartRate)
+        try c.encodeIfPresent(hrvScore, forKey: .hrvScore)
+        try c.encodeIfPresent(readinessScore, forKey: .readinessScore)
+        try c.encodeIfPresent(waterMl, forKey: .waterMl)
+        try c.encodeIfPresent(calories, forKey: .calories)
+        try c.encodeIfPresent(proteinGrams, forKey: .proteinGrams)
+        try c.encodeIfPresent(carbsGrams, forKey: .carbsGrams)
+        try c.encodeIfPresent(fatGrams, forKey: .fatGrams)
+        // sodiumMg intentionally omitted — column not yet in daily_contexts table
+        try c.encodeIfPresent(weightKg, forKey: .weightKg)
+        try c.encodeIfPresent(bodyFatPercentage, forKey: .bodyFatPercentage)
+        try c.encode(createdAt, forKey: .createdAt)
     }
 
     init(from context: DailyContext, userId: UUID) {
@@ -1711,7 +1734,7 @@ struct DailyContextSyncRecord: Codable {
         self.sodiumMg = nil // Not in model yet
         self.weightKg = context.weightKg
         self.bodyFatPercentage = context.bodyFatPercentage
-        self.createdAt = context.date
+        self.createdAt = Date()
     }
 
     func toDailyContext() -> DailyContext {
@@ -1724,7 +1747,7 @@ struct DailyContextSyncRecord: Codable {
             energyLevel: EnergyLevel(rawValue: energyLevel ?? "Moderate") ?? .moderate,
             restingHeartRate: restingHeartRate,
             hrvScore: hrvScore,
-            readinessScore: readinessScore ?? 50
+            readinessScore: readinessScore
         )
         context.waterIntakeMl = waterMl
         context.calories = calories

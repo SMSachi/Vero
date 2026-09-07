@@ -1,6 +1,6 @@
 //
 //  TrendsView.swift
-//  Vero
+//  WellPattern
 //
 //  TRENDS DASHBOARD - Matches Home Design System Exactly
 //
@@ -69,6 +69,7 @@ struct TrendsView: View {
                         // Row 2: Hydration + Weight/Workouts
                         HStack(spacing: 12) {
                             HydrationTrendCard(
+                                trend: viewModel.metricTrends.first { $0.title.contains("Hydration") },
                                 animate: animateCards,
                                 onTap: { selectedMetric = .hydration }
                             )
@@ -114,7 +115,7 @@ struct TrendsView: View {
 
                     Spacer().frame(height: 20)
                 }
-                .padding(.top, 12)
+                .padding(.top, 20)
             }
             .background(AppColors.background.ignoresSafeArea())
             .navigationBarHidden(true)
@@ -126,8 +127,7 @@ struct TrendsView: View {
             await viewModel.loadTrends()
         }
         .onAppear {
-            Task { await viewModel.refresh() }
-            // Trigger animations (same timing as Home)
+            // Animations only — data load is handled by .task above
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 withAnimation(.easeOut(duration: 0.8)) {
                     animateCards = true
@@ -278,7 +278,7 @@ private struct TrendInsightCard: View {
         .padding(12)
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
     }
 }
 
@@ -306,7 +306,7 @@ private struct HeartRateCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 // Header (matches Home WorkoutsCard)
                 HStack {
                     Image(systemName: "heart.fill")
@@ -355,7 +355,7 @@ private struct HeartRateCard: View {
                         .frame(height: 24)
                 }
             }
-            .padding(16)
+            .padding(14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .background(
                 // Subtle warm tint gradient (like Home cards)
@@ -365,8 +365,8 @@ private struct HeartRateCard: View {
                     endPoint: .bottom
                 )
             )
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .shadow(color: .black.opacity(0.08), radius: 15, y: 5)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
             // Accent line at top (like Home WorkoutsCard)
             .overlay(
                 VStack {
@@ -434,7 +434,7 @@ private struct SleepTrendCard: View {
                 )
             )
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+            .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
         }
         .buttonStyle(TrendCardButtonStyle())
     }
@@ -442,45 +442,63 @@ private struct SleepTrendCard: View {
 
 // Hydration - Blue tint (same as Home HydrationCard)
 private struct HydrationTrendCard: View {
+    let trend: MetricTrend?
     let animate: Bool
     let onTap: () -> Void
 
+    // currentValue from MetricTrend is already formatted (e.g. "1.8 L" or "61.0 oz")
+    private var avgDisplay: String {
+        trend?.currentValue ?? "—"
+    }
+
+    private var hasData: Bool {
+        trend != nil
+    }
+
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 12) {
-                // Icon with blue tint background (same as Home)
+            HStack(spacing: 10) {
+                // Icon
                 ZStack {
                     Circle()
                         .fill(AppColors.waterAccent.opacity(0.15))
-                        .frame(width: 36, height: 36)
-
+                        .frame(width: 30, height: 30)
                     Image(systemName: "drop.fill")
-                        .font(.system(size: 16))
+                        .font(.system(size: 13))
                         .foregroundStyle(AppColors.waterAccent)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("HYDRATION")
                         .font(.system(size: 9, weight: .bold))
-                        .tracking(0.5)
+                        .tracking(0.3)
                         .foregroundStyle(AppColors.textTertiary)
+                        .lineLimit(1)
 
-                    Text("View trends")
-                        .font(.system(size: 14, weight: .semibold))
+                    Text(avgDisplay)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundStyle(AppColors.textPrimary)
-                }
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
 
-                Spacer()
+                    Text(hasData ? "daily avg" : "no data yet")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(AppColors.waterAccent)
+                        .lineLimit(1)
+                }
+                .layoutPriority(1)
+
+                Spacer(minLength: 0)
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(AppColors.waterAccent)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AppColors.textTertiary.opacity(0.5))
             }
             .padding(14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .background(Color.white)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+            .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
         }
         .buttonStyle(TrendCardButtonStyle())
     }
@@ -506,28 +524,33 @@ private struct WeightTrendCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("WEIGHT")
                         .font(.system(size: 9, weight: .bold))
                         .tracking(0.5)
                         .foregroundStyle(AppColors.textTertiary)
+                        .lineLimit(1)
 
                     Text(value)
                         .font(.system(size: 20, weight: .bold, design: .rounded))
                         .foregroundStyle(AppColors.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
 
                     if !change.isEmpty {
                         Text(change)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(isGoodTrend ? AppColors.olive : AppColors.coral)
+                            .lineLimit(1)
                     }
                 }
+                .layoutPriority(1)
 
-                Spacer()
+                Spacer(minLength: 0)
 
-                // Mini trend indicator
-                if let data = trend?.dataPoints, !data.isEmpty {
+                // Mini sparkline only if there are 2+ data points
+                if let data = trend?.dataPoints, data.count >= 2 {
                     MiniSparkline(data: data, isPositive: isGoodTrend)
                 }
             }
@@ -535,13 +558,14 @@ private struct WeightTrendCard: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .background(Color.white)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+            .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
         }
         .buttonStyle(TrendCardButtonStyle())
     }
 }
 
 // Workouts - Orange tint (matches Home primary accent)
+// Layout mirrors HydrationTrendCard: [icon circle] [label+value+sub] [spacer] [chevron]
 private struct WorkoutsTrendCard: View {
     let workoutCount: Int
     let timeframeDays: Int
@@ -555,52 +579,47 @@ private struct WorkoutsTrendCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 12) {
-                // Icon with orange tint (same as Home)
+            HStack(spacing: 10) {
+                // Icon — same circle size as HydrationTrendCard
                 ZStack {
                     Circle()
-                        .fill(AppColors.burntOrange.opacity(0.12))
-                        .frame(width: 36, height: 36)
-
+                        .fill(AppColors.burntOrange.opacity(0.15))
+                        .frame(width: 30, height: 30)
                     Image(systemName: "figure.run")
-                        .font(.system(size: 16))
+                        .font(.system(size: 13))
                         .foregroundStyle(AppColors.burntOrange)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("WORKOUTS")
                         .font(.system(size: 9, weight: .bold))
-                        .tracking(0.5)
+                        .tracking(0.3)
                         .foregroundStyle(AppColors.textTertiary)
+                        .lineLimit(1)
 
-                    HStack(alignment: .lastTextBaseline, spacing: 2) {
-                        Text("\(workoutCount)")
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
-                            .foregroundStyle(AppColors.textPrimary)
+                    Text("\(workoutCount)")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppColors.textPrimary)
+                        .lineLimit(1)
 
-                        Text("total")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(AppColors.textTertiary)
-                    }
-                }
-
-                Spacer()
-
-                // Weekly average (accent color)
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(String(format: "%.1f", averagePerWeek))
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppColors.burntOrange)
-                    Text("/week")
+                    Text(String(format: "%.1f / wk", averagePerWeek))
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(AppColors.textTertiary)
+                        .foregroundStyle(AppColors.burntOrange)
+                        .lineLimit(1)
                 }
+                .layoutPriority(1)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AppColors.textTertiary.opacity(0.5))
             }
             .padding(14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .background(Color.white)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+            .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
         }
         .buttonStyle(TrendCardButtonStyle())
     }
@@ -668,29 +687,32 @@ private struct MiniSparkline: View {
 
     var body: some View {
         ZStack {
+            // Background rect always present — ensures fixed 50×30 slot in every row.
             RoundedRectangle(cornerRadius: 8)
                 .fill(AppColors.divider.opacity(0.5))
-                .frame(width: 50, height: 30)
 
-            Path { path in
-                let width: CGFloat = 42
-                let height: CGFloat = 22
-                let step = width / CGFloat(max(data.count - 1, 1))
+            // Line only when there are at least 2 points to connect.
+            if data.count >= 2 {
+                Path { path in
+                    let width: CGFloat = 42
+                    let height: CGFloat = 22
+                    let step = width / CGFloat(data.count - 1)
 
-                for (i, point) in data.enumerated() {
-                    let x = 4 + CGFloat(i) * step
-                    let y = 4 + height - point * height
-                    if i == 0 {
-                        path.move(to: CGPoint(x: x, y: y))
-                    } else {
-                        path.addLine(to: CGPoint(x: x, y: y))
+                    for (i, point) in data.enumerated() {
+                        let x = 4 + CGFloat(i) * step
+                        let y = 4 + height - point * height
+                        if i == 0 {
+                            path.move(to: CGPoint(x: x, y: y))
+                        } else {
+                            path.addLine(to: CGPoint(x: x, y: y))
+                        }
                     }
                 }
+                .stroke(
+                    isPositive ? AppColors.olive : AppColors.coral,
+                    style: StrokeStyle(lineWidth: 2, lineCap: .round)
+                )
             }
-            .stroke(
-                isPositive ? AppColors.olive : AppColors.coral,
-                style: StrokeStyle(lineWidth: 2, lineCap: .round)
-            )
         }
     }
 }
@@ -705,20 +727,30 @@ private struct ActivityCalendarCard: View {
     let animate: Bool
 
     private let days = ["M", "T", "W", "T", "F", "S", "S"]
-    private let calendar = Calendar.current
 
-    private var recentDays: [CalendarDayData?] {
-        var result: [CalendarDayData?] = []
+    // Pre-built lookup by start-of-day Date so body never does O(n) linear searches.
+    // This runs once when the struct is initialised, not on every body evaluation.
+    private let recentDays: [CalendarDayData]
+
+    init(calendarData: [CalendarDayData], workoutCount: Int, animate: Bool) {
+        self.calendarData = calendarData
+        self.workoutCount = workoutCount
+        self.animate = animate
+
+        let cal = Calendar.current
         let today = Date()
-
-        for i in (0..<14).reversed() {
-            if let date = calendar.date(byAdding: .day, value: -i, to: today) {
-                let data = calendarData.first { calendar.isDate($0.date, inSameDayAs: date) }
-                result.append(data ?? CalendarDayData(date: date, hasWorkout: false, workoutType: nil, feeling: .none))
-            }
+        // Index calendarData by start-of-day so lookups are O(1)
+        var byDay: [Date: CalendarDayData] = [:]
+        for entry in calendarData {
+            byDay[cal.startOfDay(for: entry.date)] = entry
         }
-
-        return result
+        var result: [CalendarDayData] = []
+        for i in (0..<14).reversed() {
+            let date = cal.date(byAdding: .day, value: -i, to: today) ?? today
+            let key = cal.startOfDay(for: date)
+            result.append(byDay[key] ?? CalendarDayData(date: date, hasWorkout: false, workoutType: nil, feeling: .none))
+        }
+        self.recentDays = result
     }
 
     var body: some View {
@@ -762,11 +794,11 @@ private struct ActivityCalendarCard: View {
                     HStack(spacing: 4) {
                         ForEach(0..<7, id: \.self) { day in
                             let index = week * 7 + day
-                            if index < recentDays.count, let dayData = recentDays[index] {
+                            if index < recentDays.count {
                                 CalendarDayDot(
-                                    data: dayData,
+                                    data: recentDays[index],
                                     animate: animate,
-                                    delay: Double(index) * 0.03
+                                    delay: Double(index) * 0.015  // halved — less animation overhead
                                 )
                             } else {
                                 Circle()
@@ -781,7 +813,7 @@ private struct ActivityCalendarCard: View {
         .padding(16)
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
     }
 }
 
@@ -875,6 +907,8 @@ private struct MetricsList: View {
         if trend.title.contains("Heart") { return .heartRate }
         if trend.title.contains("Sleep") { return .sleep }
         if trend.title.contains("Weight") { return .weight }
+        if trend.title.contains("Hydration") { return .hydration }
+        if trend.title.contains("Intensity") || trend.title.contains("Workout") { return .workouts }
         return nil
     }
 }
@@ -924,10 +958,10 @@ private struct MetricListRow: View {
 
                 Spacer()
 
-                // Mini sparkline
-                if !trend.dataPoints.isEmpty {
-                    MiniSparkline(data: trend.dataPoints, isPositive: trend.isPositive)
-                }
+                // Sparkline region: always same 50×30 slot so every row's chevron
+                // sits at the same x-position regardless of data availability.
+                MiniSparkline(data: trend.dataPoints, isPositive: trend.isPositive)
+                    .frame(width: 50, height: 30)
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .medium))
@@ -1018,20 +1052,9 @@ struct MetricDetailView: View {
         }
         .background(AppColors.background.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(AppColors.navy)
-                }
-            }
-        }
         .onAppear {
-            print("📊 MetricDetailView: Appeared for \(metricType.rawValue)")
             loadData()
-            // Animate content in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                     animateContent = true
                 }
@@ -1043,29 +1066,21 @@ struct MetricDetailView: View {
     }
 
     private func loadData() {
-        print("📊 MetricDetailView: Loading data for \(metricType.rawValue), timeframe=\(selectedTimeframe.rawValue)")
         isLoading = true
-
-        // Small delay to show loading state
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            let days = selectedTimeframe.days
-
-            switch metricType {
-            case .hydration:
-                data = dataService.fetchHydrationData(days: days)
-            case .sleep:
-                data = dataService.fetchSleepData(days: days)
-            case .weight:
-                data = dataService.fetchWeightData(days: days)
-            case .heartRate:
-                data = dataService.fetchHeartRateData(days: days)
-            case .workouts:
-                data = dataService.fetchWorkoutsData(days: days)
-            }
-
-            isLoading = false
-            print("📊 MetricDetailView: Data loaded - hasData=\(data?.hasData ?? false), entries=\(data?.entryCount ?? 0)")
+        let days = selectedTimeframe.days
+        switch metricType {
+        case .hydration:
+            data = dataService.fetchHydrationData(days: days)
+        case .sleep:
+            data = dataService.fetchSleepData(days: days)
+        case .weight:
+            data = dataService.fetchWeightData(days: days)
+        case .heartRate:
+            data = dataService.fetchHeartRateData(days: days)
+        case .workouts:
+            data = dataService.fetchWorkoutsData(days: days)
         }
+        isLoading = false
     }
 }
 
@@ -1207,7 +1222,7 @@ private struct MetricChartCard: View {
         .padding(20)
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
         .opacity(animate ? 1 : 0)
         .offset(y: animate ? 0 : 20)
         .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1), value: animate)
@@ -1277,8 +1292,7 @@ private struct MetricStatsCard: View {
         .padding(20)
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
-        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.2), value: data.entryCount)
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
     }
 }
 
@@ -1324,8 +1338,7 @@ private struct MetricInsightCard: View {
         .padding(16)
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
-        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.3), value: data.entryCount)
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
     }
 }
 
@@ -1368,7 +1381,7 @@ private struct MetricEmptyState: View {
         .padding(24)
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
     }
 }
 

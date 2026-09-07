@@ -1,6 +1,6 @@
 //
 //  DailyContextInputView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Input view for daily context: water, nutrition, weight (if goal == weight_loss).
 //  Saves locally first, then syncs to Supabase.
@@ -305,20 +305,36 @@ struct DailyContextInputView: View {
 
     // MARK: - Save
 
+    /// Compute readiness score from manually-entered sleep hours.
+    /// Mirrors HomeViewModel.calculateReadinessScore (sleep-only path, no HRV available here).
+    private static func readinessScore(sleepHours: Double) -> Int {
+        var score = 70
+        switch sleepHours {
+        case 8...: score += 15
+        case 7..<8: score += 10
+        case 5..<6: score -= 10
+        case ..<5: score -= 20
+        default: break
+        }
+        return max(0, min(100, score))
+    }
+
     private func save() {
         isSaving = true
 
-        // Create daily context with all fields
+        // Preserve the existing UUID so upsert(onConflict: "id") updates the same row.
+        // Always generating a new UUID would insert a duplicate row in Supabase on every save.
+        let existing = persistenceService.fetchTodayDailyContext()
         var context = DailyContext(
-            id: UUID(),
-            date: Date(),
+            id: existing?.id ?? UUID(),
+            date: existing?.date ?? Date(),
             sleepHours: sleepHours,
             sleepQuality: sleepQuality,
             stressLevel: .moderate,
             energyLevel: .moderate,
-            restingHeartRate: nil,
-            hrvScore: nil,
-            readinessScore: 50
+            restingHeartRate: existing?.restingHeartRate,
+            hrvScore: existing?.hrvScore,
+            readinessScore: Self.readinessScore(sleepHours: sleepHours)
         )
 
         // Set nutrition/water values
@@ -339,29 +355,11 @@ struct DailyContextInputView: View {
             context.weightKg = kg
         }
 
-        // ══════════════════════════════════════════════════════════════════════════
-        // PHASE 1: LOCAL SAVE (SwiftData)
-        // ══════════════════════════════════════════════════════════════════════════
-        print("📊 ════════════════════════════════════════════════════════════════")
-        print("📊 DAILY_CONTEXT: SAVE FLOW STARTED")
-        print("📊 ════════════════════════════════════════════════════════════════")
-        print("📊 [LOCAL] Saving to SwiftData...")
-        print("📊 [LOCAL] ID: \(context.id)")
-        print("📊 [LOCAL] Date: \(context.date)")
-        print("📊 [LOCAL] Sleep: \(context.sleepHours)h (\(context.sleepQuality.rawValue))")
-        print("📊 [LOCAL] Water: \(context.waterIntakeMl ?? 0)ml")
-        print("📊 [LOCAL] Calories: \(context.calories ?? 0)")
-        print("📊 [LOCAL] Protein: \(context.proteinGrams ?? 0)g")
-        print("📊 [LOCAL] Carbs: \(context.carbsGrams ?? 0)g")
-        print("📊 [LOCAL] Weight: \(context.weightKg ?? 0)kg")
-
         persistenceService.saveDailyContext(context)
-        print("📊 [LOCAL] ✅ SwiftData save SUCCESS")
+        #if DEBUG
+        print("📊 [DAILY_CONTEXT] Local save complete — id=\(context.id)")
+        #endif
 
-        // ══════════════════════════════════════════════════════════════════════════
-        // PHASE 2: BROADCAST (Unified Data Pipeline)
-        // ══════════════════════════════════════════════════════════════════════════
-        print("📊 [BROADCAST] Broadcasting dailyContext change...")
         DataBroadcaster.shared.dailyContextSaved()
 
         // Also broadcast specific metrics for granular listeners
@@ -382,12 +380,7 @@ struct DailyContextInputView: View {
         // PHASE 3: CLOUD SYNC (Supabase - non-blocking with timeout)
         // ══════════════════════════════════════════════════════════════════════════
         Task.detached(priority: .utility) { [syncService, context] in
-            print("📊 BACKGROUND CLOUD SYNC START")
-            print("📊 Context ID: \(context.id)")
-
             await syncService.syncDailyContextWithTimeout(context, timeout: 10)
-
-            print("📊 BACKGROUND CLOUD SYNC COMPLETE")
         }
 
         // Show success
@@ -396,9 +389,7 @@ struct DailyContextInputView: View {
             showSuccess = true
         }
 
-        // Call onSave callback (legacy - keeping for compatibility)
         onSave?()
-        print("📊 [LOCAL] ✅ Save complete, broadcast sent")
 
         // Dismiss after delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {

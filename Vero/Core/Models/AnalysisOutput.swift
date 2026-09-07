@@ -1,6 +1,6 @@
 //
 //  AnalysisOutput.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Structured analysis output for workout insights.
 //  This model represents the structured data produced by local rules/calculations.

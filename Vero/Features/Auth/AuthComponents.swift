@@ -1,9 +1,9 @@
 //
 //  AuthComponents.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Reusable form components for authentication screens.
-//  Matches Insio's premium design language.
+//  Matches WellPattern's premium design language.
 //
 
 import SwiftUI
@@ -53,7 +53,10 @@ struct AuthSecureField: View {
     let placeholder: String
     @Binding var text: String
     @Binding var showPassword: Bool
+    var textContentType: UITextContentType = .password
     var isFocused: Bool = false
+
+    @FocusState private var isFieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xs) {
@@ -65,18 +68,24 @@ struct AuthSecureField: View {
                 Group {
                     if showPassword {
                         TextField(placeholder, text: $text)
+                            .focused($isFieldFocused)
                     } else {
                         SecureField(placeholder, text: $text)
+                            .focused($isFieldFocused)
                     }
                 }
                 .font(AppTypography.bodyMedium)
                 .foregroundStyle(AppColors.textPrimary)
-                .textContentType(.password)
+                .textContentType(textContentType)
                 .autocapitalization(.none)
                 .autocorrectionDisabled()
 
                 Button {
+                    let wasFocused = isFieldFocused
                     showPassword.toggle()
+                    if wasFocused {
+                        DispatchQueue.main.async { isFieldFocused = true }
+                    }
                 } label: {
                     Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
                         .font(.system(size: 16))
@@ -94,6 +103,11 @@ struct AuthSecureField: View {
                     )
             )
             .animation(AppAnimation.springQuick, value: isFocused)
+        }
+        // Sync external isFocused → internal FocusState so programmatic focus
+        // (e.g. pressing Next on email) actually activates this field's text input.
+        .onChange(of: isFocused) { _, focused in
+            if focused { isFieldFocused = true }
         }
     }
 }

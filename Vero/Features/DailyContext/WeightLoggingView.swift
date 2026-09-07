@@ -1,6 +1,6 @@
 //
 //  WeightLoggingView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Dedicated weight logging screen with slider input.
 //  Uses UnitPreferences for metric/imperial display.
@@ -298,7 +298,7 @@ struct WeightLoggingView: View {
                 energyLevel: .moderate,
                 restingHeartRate: nil,
                 hrvScore: nil,
-                readinessScore: 50
+                readinessScore: nil
             )
         }
 

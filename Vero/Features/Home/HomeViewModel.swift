@@ -1,6 +1,6 @@
 //
 //  HomeViewModel.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  ViewModel for the Home screen that manages HealthKit data fetching,
 //  interpretation generation, and persistence.
@@ -69,37 +69,20 @@ final class HomeViewModel: ObservableObject {
         return hoursSinceWorkout < 18
     }
 
-    // MARK: - Analytics Properties (computed from local data)
+    // MARK: - Analytics Properties (@Published — updated only on explicit refresh, never queried in body)
 
-    /// Number of workouts this week from persistence
-    var workoutsThisWeek: Int {
-        persistenceService.countWorkoutsThisWeek()
-    }
+    /// Number of workouts this calendar week (Mon 00:00 → now).
+    @Published private(set) var workoutsThisWeek: Int = 0
 
-    /// Current workout streak from persistence
-    var currentStreak: Int {
-        persistenceService.calculateCurrentStreak()
-    }
+    /// Current workout streak from persistence.
+    @Published private(set) var currentStreak: Int = 0
 
-    /// Weekly weight change (for weight loss tracking)
-    var weeklyWeightDelta: Double? {
-        persistenceService.calculateWeeklyWeightDelta()
-    }
+    /// Weekly weight change (for weight loss tracking).
+    @Published private(set) var weeklyWeightDelta: Double? = nil
 
     /// Set of weekday indices (0=Mon…6=Sun) that had at least one workout this calendar week.
     /// Used by WeeklyTracker to show actual workout days instead of a sequential fill.
-    var workoutDaysThisWeek: Set<Int> {
-        let calendar = Calendar.current
-        guard let startOfWeek = calendar.date(
-            from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
-        ) else { return [] }
-        let endOfWeek = calendar.date(byAdding: .day, value: 7, to: startOfWeek)!
-        let workouts = persistenceService.fetchWorkouts(from: startOfWeek, to: endOfWeek)
-        return Set(workouts.map { workout in
-            let weekday = calendar.component(.weekday, from: workout.startDate)
-            return (weekday + 5) % 7  // 0=Mon, 1=Tue … 6=Sun
-        })
-    }
+    @Published private(set) var workoutDaysThisWeek: Set<Int> = []
 
     /// Whether a post-workout check-in has been completed for the latest workout
     var hasCompletedCheckIn: Bool {
@@ -120,15 +103,12 @@ final class HomeViewModel: ObservableObject {
     // MARK: - Initialization
 
     init() {
-        // CRITICAL: Don't do ANY work in init - it blocks the main thread
-        // and prevents SwiftUI views from appearing (onAppear never fires)
-        print("🏠 HomeViewModel: init() - subscribing to DataBroadcaster")
-
-        // Subscribe to home-relevant data changes
+        // Subscribe to home-relevant data changes.
+        // Debounced: rapid saves (e.g. multiple fields in one daily context) coalesce into one refresh.
         DataBroadcaster.shared.homeDataChanged
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] event in
-                print("🏠 HomeViewModel: RECEIVED broadcast - \(event.type.rawValue)")
+            .debounce(for: .milliseconds(400), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
                 self?.refreshAnalytics()
             }
             .store(in: &cancellables)
@@ -138,9 +118,6 @@ final class HomeViewModel: ObservableObject {
 
     /// Load data from local persistence (for immediate display before HealthKit fetch)
     private func loadCachedData() {
-        print("💾 ════════════════════════════════════════════════════")
-        print("💾 HOME REFRESH START")
-        print("💾 ════════════════════════════════════════════════════")
         let startTime = CFAbsoluteTimeGetCurrent()
 
         // Load recent workouts first
@@ -167,43 +144,31 @@ final class HomeViewModel: ObservableObject {
 
             // ALWAYS update water intake from context (including 0)
             let waterMl = cachedContext.waterIntakeMl ?? 0
-            let waterLiters = Double(waterMl) / 1000.0
-            let previousWater = self.waterIntake
-            self.waterIntake = waterLiters
-
-            print("💾 VALUE LOADED into Home card: HYDRATION")
-            print("💾   Previous: \(String(format: "%.2f", previousWater))L")
-            print("💾   New: \(String(format: "%.2f", waterLiters))L (\(waterMl)ml from persistence)")
-
-            // Log sleep if available
-            if cachedContext.sleepHours > 0 {
-                print("💾 VALUE LOADED into Home card: SLEEP = \(String(format: "%.1f", cachedContext.sleepHours))h")
-            }
-
-            // Log weight if available
-            if let weightKg = cachedContext.weightKg, weightKg > 0 {
-                print("💾 VALUE LOADED into Home card: WEIGHT = \(String(format: "%.1f", weightKg))kg")
-            }
+            self.waterIntake = Double(waterMl) / 1000.0
         } else {
-            // No context - reset values
             self.dailyContext = nil
             self.waterIntake = 0
-            print("💾 No daily context found - values reset to 0")
         }
 
-        // Load cached recovery
+        // Load cached recovery. If none exists but we have a context (e.g. from a
+        // manual daily log), compute recovery now so the card shows real data.
         if let cachedRecovery = persistenceService.fetchTodayRecovery() {
             self.recovery = cachedRecovery
+        } else if let context = self.dailyContext, let calculatedRecovery = calculateRecovery(from: context) {
+            self.recovery = calculatedRecovery
+            _ = persistenceService.saveNextDayRecovery(calculatedRecovery, for: nil)
         }
 
+        // Refresh analytics @Published properties (SwiftData queries done once here, not per-render)
+        self.workoutsThisWeek = MetricsEngine.shared.workoutCountThisCalendarWeek()
+        self.currentStreak = MetricsEngine.shared.currentStreak()
+        self.weeklyWeightDelta = MetricsEngine.shared.weeklyWeightDeltaKg()
+        self.workoutDaysThisWeek = MetricsEngine.shared.workoutDaysThisCalendarWeek()
+
         let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
-        print("💾 ════════════════════════════════════════════════════")
-        print("💾 HOME REFRESH COMPLETE")
-        print("💾 Duration: \(String(format: "%.1f", elapsed))ms")
-        print("💾 Water: \(String(format: "%.2f", waterIntake))L")
-        print("💾 Sleep: \(String(format: "%.1f", dailyContext?.sleepHours ?? 0))h")
-        print("💾 Weight: \(dailyContext?.weightKg.map { String(format: "%.1f", $0) + "kg" } ?? "—")")
-        print("💾 ════════════════════════════════════════════════════")
+        #if DEBUG
+        print("💾 HOME CACHED LOAD: \(String(format: "%.1f", elapsed))ms | water=\(String(format: "%.2f", waterIntake))L workouts=\(workoutsThisWeek)")
+        #endif
     }
 
     // MARK: - Data Loading
@@ -212,51 +177,28 @@ final class HomeViewModel: ObservableObject {
     /// Falls back to cached data when HealthKit is unavailable.
     /// Shows empty states when no data exists.
     func loadData() async {
-        print("🏠 HomeViewModel: ══════════════════════════════════════════════════")
-        print("🏠 HomeViewModel: LOAD DATA STARTED")
-        print("🏠 HomeViewModel: ══════════════════════════════════════════════════")
 
         isLoading = true
         errorMessage = nil
 
         // First, load cached data immediately (local-first)
-        print("🏠 HomeViewModel: Loading cached data first...")
         loadCachedData()
-        print("🏠 HomeViewModel: Cached data loaded - hasRealData: \(hasRealData)")
-
-        // Check HealthKit availability
-        print("🏠 HomeViewModel: Checking HealthKit status...")
-        print("🏠 HomeViewModel: isSimulator: \(HealthKitService.isSimulator)")
-        print("🏠 HomeViewModel: isHealthKitAvailable: \(healthKitService.isHealthKitAvailable)")
 
         // On simulator or when HealthKit unavailable, skip HealthKit entirely
         if HealthKitService.isSimulator {
-            print("🏠 HomeViewModel: ⚠️ SIMULATOR - skipping HealthKit, using cached/empty data")
-            if hasRealData {
-                generateInterpretation()
-            }
+            if hasRealData { generateInterpretation() }
             isLoading = false
-            print("🏠 HomeViewModel: ══════════════════════════════════════════════════")
             return
         }
 
         // Check authorization status
         healthKitService.checkAuthorizationStatus()
-        print("🏠 HomeViewModel: Authorization status: \(healthKitService.authorizationStatus.rawValue)")
-        print("🏠 HomeViewModel: Has verified read access: \(healthKitService.hasVerifiedReadAccess)")
 
         guard healthKitService.authorizationStatus == .authorized else {
-            print("🏠 HomeViewModel: ⚠️ HealthKit not authorized - using cached data only")
-            // Not authorized - rely on cached data only
-            if hasRealData {
-                generateInterpretation()
-            }
+            if hasRealData { generateInterpretation() }
             isLoading = false
-            print("🏠 HomeViewModel: ══════════════════════════════════════════════════")
             return
         }
-
-        print("🏠 HomeViewModel: ✅ HealthKit authorized - fetching data from HealthKit...")
 
         // Fetch all data concurrently from HealthKit
         async let workoutTask = fetchLatestWorkout()
@@ -264,16 +206,19 @@ final class HomeViewModel: ObservableObject {
         async let contextTask = fetchDailyContext()
         async let waterTask = fetchWaterIntake()
 
-        // Wait for all tasks
         let (workout, recent, context, water) = await (workoutTask, recentWorkoutsTask, contextTask, waterTask)
 
-        print("🏠 HomeViewModel: ──────────────────────────────────────────────────")
-        print("🏠 HomeViewModel: FETCH RESULTS:")
-        print("🏠 HomeViewModel: Latest workout: \(workout != nil ? "✅ Found" : "❌ None")")
-        print("🏠 HomeViewModel: Recent workouts: \(recent.count) found")
-        print("🏠 HomeViewModel: Daily context: \(context != nil ? "✅ Found" : "❌ None")")
-        print("🏠 HomeViewModel: Water intake: \(water.map { String(format: "%.1fL", $0) } ?? "None")")
-        print("🏠 HomeViewModel: ──────────────────────────────────────────────────")
+        #if DEBUG
+        print("🏥 HK→HOME: ══════════ DATA LANDED IN APP STATE ══════════════")
+        print("🏥 HK→HOME: latestWorkout   = \(workout.map { "\($0.type.rawValue) \(Int($0.duration / 60)) min" } ?? "nil")")
+        print("🏥 HK→HOME: recentWorkouts  = \(recent.count) workouts")
+        print("🏥 HK→HOME: sleep.hours     = \(context.map { String(format: "%.2f h", $0.sleepHours) } ?? "nil (no sleep data)")")
+        print("🏥 HK→HOME: hrv             = \(context?.hrvScore.map { String(format: "%.1f ms", $0) } ?? "nil")")
+        print("🏥 HK→HOME: restingHR       = \(context?.restingHeartRate.map { "\($0) bpm" } ?? "nil")")
+        print("🏥 HK→HOME: water           = \(water.map { String(format: "%.3f L", $0) } ?? "nil (none today)")")
+        print("🏥 HK→HOME: readiness       = \(context.map { $0.readinessScore.map { "\($0)/100" } ?? "nil (no data)" } ?? "nil")")
+        print("🏥 HK→HOME: ════════════════════════════════════════════════════")
+        #endif
 
         // Update published properties and persist to local storage
         if let workout = workout {
@@ -322,9 +267,8 @@ final class HomeViewModel: ObservableObject {
             self.waterIntake = water
         }
 
-        // Calculate recovery based on available data
-        if let context = dailyContext {
-            let calculatedRecovery = calculateRecovery(from: context)
+        // Calculate recovery based on available data (nil when readiness is unavailable)
+        if let context = dailyContext, let calculatedRecovery = calculateRecovery(from: context) {
             self.recovery = calculatedRecovery
 
             if let workout = latestWorkout {
@@ -344,36 +288,21 @@ final class HomeViewModel: ObservableObject {
             }
         }
 
+        #if DEBUG
+        MetricsEngine.shared.auditLog(screen: "Dashboard")
+        Task { await HealthKitService.shared.printDiagnosticSummary() }
+        #endif
         isLoading = false
-        print("🏠 HomeViewModel: ══════════════════════════════════════════════════")
-        print("🏠 HomeViewModel: LOAD DATA COMPLETE")
-        print("🏠 HomeViewModel: hasRealData: \(hasRealData)")
-        print("🏠 HomeViewModel: showEmptyState: \(showEmptyState)")
-        print("🏠 HomeViewModel: ══════════════════════════════════════════════════")
     }
 
     /// Refresh analytics after a workout is added.
     /// Call this from WorkoutsListView after AddWorkoutView saves.
     /// Also called by DataBroadcaster when any metric is logged.
     func refreshAnalytics() {
-        print("🔄 ════════════════════════════════════════════════════")
-        print("🔄 HOME: REFRESH TRIGGERED (broadcast received)")
-        print("🔄 ════════════════════════════════════════════════════")
-
-        // Reload from persistence - this updates all @Published properties
         loadCachedData()
-
-        // Regenerate interpretation if we have a workout
         if hasRealData {
             generateInterpretation()
         }
-
-        // Force UI update by publishing change (belt and suspenders)
-        objectWillChange.send()
-
-        print("🔄 ════════════════════════════════════════════════════")
-        print("🔄 HOME: REFRESH DONE")
-        print("🔄 ════════════════════════════════════════════════════")
     }
 
     /// Generate workout interpretation using the InterpretationEngine.
@@ -451,7 +380,7 @@ final class HomeViewModel: ObservableObject {
         return DailyContext(
             id: UUID(),
             date: Date(),
-            sleepHours: sleep?.hours ?? 7.0,
+            sleepHours: sleep?.hours ?? 0.0,
             sleepQuality: sleep?.quality ?? .fair,
             stressLevel: stressLevel,
             energyLevel: energyLevel,
@@ -472,7 +401,7 @@ final class HomeViewModel: ObservableObject {
 
         switch sleep {
         case 8...:
-            return hrv ?? 0 > 50 ? .peak : .high
+            return hrv != nil && hrv! > 50 ? .peak : .high
         case 7..<8:
             return .high
         case 6..<7:
@@ -504,7 +433,10 @@ final class HomeViewModel: ObservableObject {
         sleepQuality: SleepQuality?,
         hrv: Double?,
         restingHR: Int?
-    ) -> Int {
+    ) -> Int? {
+        // Require at least one real metric; never fabricate a score from nothing.
+        guard sleepHours != nil || hrv != nil else { return nil }
+
         var score = 70
 
         if let sleep = sleepHours {
@@ -529,8 +461,8 @@ final class HomeViewModel: ObservableObject {
         return max(0, min(100, score))
     }
 
-    private func calculateRecovery(from context: DailyContext) -> NextDayRecovery {
-        let score = context.readinessScore
+    private func calculateRecovery(from context: DailyContext) -> NextDayRecovery? {
+        guard let score = context.readinessScore else { return nil }
 
         let muscleRecovery: RecoveryStatus
         let cardioRecovery: RecoveryStatus

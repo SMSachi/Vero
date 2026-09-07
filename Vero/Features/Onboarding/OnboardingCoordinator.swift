@@ -1,6 +1,6 @@
 //
 //  OnboardingCoordinator.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Manages onboarding flow state and navigation
 //
@@ -11,7 +11,7 @@ import SwiftUI
 
 enum OnboardingStep: Int, CaseIterable {
     case cinematicIntro
-    case whatInsioDoes
+    case whatWellPatternDoes
     case healthPermission
     case goalSelection
     case contextPreferences
@@ -21,7 +21,7 @@ enum OnboardingStep: Int, CaseIterable {
     var progress: Double {
         switch self {
         case .cinematicIntro: return 0
-        case .whatInsioDoes: return 0.15
+        case .whatWellPatternDoes: return 0.15
         case .healthPermission: return 0.30
         case .goalSelection: return 0.50
         case .contextPreferences: return 0.70
@@ -39,7 +39,7 @@ enum OnboardingStep: Int, CaseIterable {
 
     var showsBackButton: Bool {
         switch self {
-        case .cinematicIntro, .whatInsioDoes, .complete: return false
+        case .cinematicIntro, .whatWellPatternDoes, .complete: return false
         default: return true
         }
     }
@@ -183,8 +183,8 @@ struct OnboardingContainerView: View {
                     switch state.currentStep {
                     case .cinematicIntro:
                         CinematicIntroView()
-                    case .whatInsioDoes:
-                        WhatInsioDoesView()
+                    case .whatWellPatternDoes:
+                        WhatWellPatternDoesView()
                     case .healthPermission:
                         HealthPermissionIntroView()
                     case .goalSelection:

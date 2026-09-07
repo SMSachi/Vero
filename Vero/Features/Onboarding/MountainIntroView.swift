@@ -1,6 +1,6 @@
 //
 //  MountainIntroView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Premium onboarding screen with stylized mountain/path concept
 //
@@ -16,7 +16,7 @@ struct MountainIntroView: View {
         "Workouts aren't all the same.",
         "Your workout today won't be the same as last week.",
         "Those differences have meaning.",
-        "Insio helps you understand them."
+        "WellPattern helps you understand them."
     ]
 
     var body: some View {
@@ -127,7 +127,7 @@ struct MountainPathView: View {
     }
 
     private func dotPosition(index: Int, in size: CGSize) -> CGPoint {
-        let progress = Double(index) / Double(dotsVisible.count - 1)
+        let progress = dotsVisible.count > 1 ? Double(index) / Double(dotsVisible.count - 1) : 0
         let x = size.width * 0.1 + (size.width * 0.8 * progress)
 
         // Create a wave pattern that goes up the mountain

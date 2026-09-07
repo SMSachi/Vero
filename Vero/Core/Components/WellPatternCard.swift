@@ -1,6 +1,6 @@
 //
-//  VeroCard.swift
-//  Insio Health
+//  WellPatternCard.swift
+//  WellPattern Health
 //
 //  Standardized card component for consistent styling
 //  Corner radius: 16, Padding: 16, Spacing: 16
@@ -11,7 +11,7 @@ import SwiftUI
 // MARK: - Standard Card
 
 /// Base card with consistent styling across the app
-struct VeroCard<Content: View>: View {
+struct WellPatternCard<Content: View>: View {
     let content: Content
     var backgroundColor: Color
     var showBorder: Bool
@@ -46,7 +46,7 @@ struct VeroCard<Content: View>: View {
 // MARK: - Selectable Card
 
 /// Card that can be selected/deselected with visual feedback
-struct VeroSelectableCard<Content: View>: View {
+struct WellPatternSelectableCard<Content: View>: View {
     let isSelected: Bool
     let accentColor: Color
     let action: () -> Void
@@ -87,7 +87,7 @@ struct VeroSelectableCard<Content: View>: View {
 // MARK: - Tappable Card
 
 /// Card with tap action and chevron indicator
-struct VeroTappableCard<Content: View>: View {
+struct WellPatternTappableCard<Content: View>: View {
     let action: () -> Void
     let content: Content
     var showChevron: Bool
@@ -127,7 +127,7 @@ struct VeroTappableCard<Content: View>: View {
 // MARK: - Icon Card (for selections with icon)
 
 /// Selection card with icon, title, and optional description
-struct VeroIconCard: View {
+struct WellPatternIconCard: View {
     let icon: String
     let iconColor: Color
     let title: String
@@ -213,7 +213,7 @@ struct VeroIconCard: View {
 // MARK: - Toggle Card
 
 /// Card with toggle switch
-struct VeroToggleCard: View {
+struct WellPatternToggleCard: View {
     let icon: String
     let iconColor: Color
     let title: String
@@ -295,22 +295,22 @@ struct CardButtonStyle: ButtonStyle {
 #Preview("Cards") {
     ScrollView {
         VStack(spacing: 16) {
-            VeroCard {
+            WellPatternCard {
                 Text("Basic Card")
                     .font(.system(size: 16, weight: .semibold))
             }
 
-            VeroSelectableCard(isSelected: true, action: {}) {
+            WellPatternSelectableCard(isSelected: true, action: {}) {
                 Text("Selected Card")
                     .font(.system(size: 16, weight: .semibold))
             }
 
-            VeroSelectableCard(isSelected: false, action: {}) {
+            WellPatternSelectableCard(isSelected: false, action: {}) {
                 Text("Unselected Card")
                     .font(.system(size: 16, weight: .semibold))
             }
 
-            VeroTappableCard(action: {}) {
+            WellPatternTappableCard(action: {}) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Tappable Card")
                         .font(.system(size: 16, weight: .semibold))
@@ -320,7 +320,7 @@ struct CardButtonStyle: ButtonStyle {
                 }
             }
 
-            VeroIconCard(
+            WellPatternIconCard(
                 icon: "flame.fill",
                 iconColor: AppColors.coral,
                 title: "Build Endurance",
@@ -329,7 +329,7 @@ struct CardButtonStyle: ButtonStyle {
                 action: {}
             )
 
-            VeroIconCard(
+            WellPatternIconCard(
                 icon: "dumbbell.fill",
                 iconColor: AppColors.navy,
                 title: "Build Strength",

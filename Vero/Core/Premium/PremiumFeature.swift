@@ -1,6 +1,6 @@
 //
 //  PremiumFeature.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Defines feature gating across Free, Plus, and Pro tiers.
 //
@@ -188,10 +188,10 @@ enum PremiumFeature: String, CaseIterable, Identifiable {
 
 enum FreeTierLimits {
     /// Maximum days of history visible in free tier
-    static let historyDays = InsioConfig.TierLimits.freeHistoryDays
+    static let historyDays = WellPatternConfig.TierLimits.freeHistoryDays
 
     /// Maximum number of workouts visible in free tier
-    static let maxWorkoutsVisible = InsioConfig.TierLimits.freeMaxWorkoutsVisible
+    static let maxWorkoutsVisible = WellPatternConfig.TierLimits.freeMaxWorkoutsVisible
 
     /// Whether basic insights are available
     static let basicInsightsEnabled = true

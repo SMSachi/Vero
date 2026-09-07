@@ -1,6 +1,6 @@
 //
 //  NotificationSetupView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Explain and request notification permissions
 //

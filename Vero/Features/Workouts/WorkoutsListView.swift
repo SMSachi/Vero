@@ -1,6 +1,6 @@
 //
 //  WorkoutsListView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Workout list - loads real data from persistence, shows empty state when needed.
 //
@@ -106,7 +106,8 @@ struct WorkoutsListView: View {
                 }
                 .padding(.top, AppSpacing.Layout.topPadding)
             }
-            .background(AppColors.background)
+            .scrollContentBackground(.hidden)
+            .background(AppColors.background.ignoresSafeArea(edges: .top))
             .navigationBarHidden(true)
         }
         .onAppear {

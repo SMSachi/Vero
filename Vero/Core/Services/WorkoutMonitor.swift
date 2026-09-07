@@ -1,6 +1,6 @@
 //
 //  WorkoutMonitor.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Monitors for new workouts and automates check-in triggers.
 //  This service detects when new workouts are saved locally and
@@ -120,20 +120,26 @@ final class WorkoutMonitor: ObservableObject {
     func workoutSaved(_ workout: Workout) {
         // Skip if this workout already had a post-workout check-in
         guard !completedPostWorkoutIds.contains(workout.id) else {
+            #if DEBUG
             print("WorkoutMonitor: Workout already has post-workout check-in")
+            #endif
             return
         }
 
         // Skip if this is the same workout we already know about
         guard workout.id != lastKnownWorkoutId else {
+            #if DEBUG
             print("WorkoutMonitor: Workout already known")
+            #endif
             return
         }
 
         // CRITICAL: Check workout source - only trigger for eligible sources
         // This prevents check-ins for restored/synced historical workouts
         guard workout.source.eligibleForCheckIn else {
+            #if DEBUG
             print("WorkoutMonitor: Workout source '\(workout.source.rawValue)' not eligible for check-in")
+            #endif
             lastKnownWorkoutId = workout.id
             return
         }
@@ -141,7 +147,9 @@ final class WorkoutMonitor: ObservableObject {
         // Check if workout is recent enough for post-workout check-in (within 4 hours)
         let hoursSinceWorkout = -workout.endDate.timeIntervalSinceNow / 3600
         guard hoursSinceWorkout < 4 else {
+            #if DEBUG
             print("WorkoutMonitor: Workout too old for post-workout check-in (\(Int(hoursSinceWorkout))h ago)")
+            #endif
             lastKnownWorkoutId = workout.id
             return
         }
@@ -151,7 +159,9 @@ final class WorkoutMonitor: ObservableObject {
         hasPendingPostWorkoutCheckIn = true
         lastKnownWorkoutId = workout.id
 
+        #if DEBUG
         print("WorkoutMonitor: New workout detected (source: \(workout.source.rawValue)), triggering post-workout check-in")
+        #endif
     }
 
     /// Mark post-workout check-in as completed.
@@ -164,7 +174,9 @@ final class WorkoutMonitor: ObservableObject {
         // Schedule next-day check-in
         scheduleNextDayCheckIn(for: workoutId)
 
+        #if DEBUG
         print("WorkoutMonitor: Post-workout check-in completed, next-day scheduled")
+        #endif
     }
 
     /// Mark post-workout check-in as skipped.
@@ -176,7 +188,9 @@ final class WorkoutMonitor: ObservableObject {
         // Still schedule next-day check-in even if post-workout was skipped
         scheduleNextDayCheckIn(for: workoutId)
 
+        #if DEBUG
         print("WorkoutMonitor: Post-workout check-in skipped, next-day still scheduled")
+        #endif
     }
 
     /// Mark next-day check-in as completed.
@@ -187,7 +201,9 @@ final class WorkoutMonitor: ObservableObject {
         scheduledNextDayWorkoutId = nil
         scheduledNextDayDate = nil
 
+        #if DEBUG
         print("WorkoutMonitor: Next-day check-in completed")
+        #endif
     }
 
     /// Mark next-day check-in as skipped.
@@ -197,7 +213,9 @@ final class WorkoutMonitor: ObservableObject {
         scheduledNextDayWorkoutId = nil
         scheduledNextDayDate = nil
 
+        #if DEBUG
         print("WorkoutMonitor: Next-day check-in skipped")
+        #endif
     }
 
     /// Get the appropriate time window for post-workout check-in.
@@ -245,7 +263,9 @@ final class WorkoutMonitor: ObservableObject {
             } else {
                 // Just update the tracking without triggering check-in
                 lastKnownWorkoutId = latestWorkout.id
+                #if DEBUG
                 print("WorkoutMonitor: Latest workout not eligible for check-in, skipping")
+                #endif
             }
         }
     }
@@ -263,7 +283,9 @@ final class WorkoutMonitor: ObservableObject {
                 pendingWorkoutForNextDayCheckIn = workout
                 hasPendingNextDayCheckIn = true
 
+                #if DEBUG
                 print("WorkoutMonitor: Next-day check-in time reached")
+                #endif
             }
         }
     }
@@ -305,7 +327,9 @@ final class WorkoutMonitor: ObservableObject {
                 scheduledNextDayWorkoutId = workout.id
                 scheduledNextDayDate = now
 
+                #if DEBUG
                 print("WorkoutMonitor: Found yesterday's workout without next-day check-in: \(workout.type.rawValue)")
+                #endif
                 return
             }
         }
@@ -331,7 +355,9 @@ final class WorkoutMonitor: ObservableObject {
             scheduledNextDayWorkoutId = workoutId
             scheduledNextDayDate = scheduledDate
 
+            #if DEBUG
             print("WorkoutMonitor: Next-day check-in scheduled for \(scheduledDate)")
+            #endif
         }
     }
 
@@ -347,11 +373,19 @@ final class WorkoutMonitor: ObservableObject {
         scheduledNextDayDate = nil
     }
 
-    /// Reset all completed check-in tracking (for debugging)
+    /// Reset all completed check-in tracking (for debugging and new-account sign-in)
     func resetCompletedTracking() {
         completedPostWorkoutIds = []
         completedNextDayIds = []
         lastKnownWorkoutId = nil
+        // Also clear scheduled next-day state so a previous user's workout can't
+        // survive a sign-out→sign-in and trigger a spurious check-in sheet.
+        scheduledNextDayWorkoutId = nil
+        scheduledNextDayDate = nil
+
+        #if DEBUG
+        print("WorkoutMonitor: resetCompletedTracking — all tracking state cleared")
+        #endif
     }
 }
 

@@ -1,6 +1,6 @@
 //
 //  WorkoutInterpretation.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Result model returned by InterpretationEngine.
 //  Contains all the generated text and metadata for displaying

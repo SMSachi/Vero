@@ -1,6 +1,6 @@
 //
 //  MiniStatCard.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Compact stat display for grids and summaries
 //

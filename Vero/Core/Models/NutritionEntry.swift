@@ -1,6 +1,6 @@
 //
 //  NutritionEntry.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Simple nutrition logging model for water, calories, and macros.
 //  Designed to be quick to log without requiring a full meal database.

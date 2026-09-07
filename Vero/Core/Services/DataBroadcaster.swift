@@ -1,6 +1,6 @@
 //
 //  DataBroadcaster.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  UNIFIED DATA PIPELINE
 //  =====================
@@ -156,14 +156,9 @@ final class DataBroadcaster: ObservableObject {
         lastChangeTimestamp = event.timestamp
         lastChangeType = type
 
-        // Log for debugging
-        print("📡 ════════════════════════════════════════════════════════")
-        print("📡 DATA BROADCAST: \(type.rawValue.uppercased())")
-        print("📡 Timestamp: \(event.timestamp)")
-        if let meta = metadata {
-            print("📡 Metadata: \(meta)")
-        }
-        print("📡 ════════════════════════════════════════════════════════")
+        #if DEBUG
+        print("📡 DATA BROADCAST: \(type.rawValue)")
+        #endif
 
         // Publish event
         dataChanged.send(event)

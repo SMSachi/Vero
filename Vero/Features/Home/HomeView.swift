@@ -1,6 +1,6 @@
 //
 //  HomeView.swift
-//  Vero
+//  WellPattern
 //
 //  BOLD HOME DASHBOARD - Unique, Expressive, Show-off Worthy
 //
@@ -134,8 +134,8 @@ struct HomeDashboardView: View {
                                 )
                             } else {
                                 ReadinessCard(
-                                    score: viewModel.recovery?.overallScore,
-                                    animate: animateProgress,
+                                    hrv: viewModel.dailyContext?.hrvScore,
+                                    sleepHours: viewModel.dailyContext?.sleepHours,
                                     onTap: { showDailyLog = true }
                                 )
                             }
@@ -165,10 +165,10 @@ struct HomeDashboardView: View {
 
                     Spacer().frame(height: 12)
                 }
-                .padding(.top, 20)
+                .padding(.top, 36)
             }
             .scrollContentBackground(.hidden)
-            .background(AppColors.background)
+            .background(AppColors.background.ignoresSafeArea(edges: .top))
             .navigationBarHidden(true)
             .navigationDestination(isPresented: $navigateToWorkoutInsight) {
                 if let workout = viewModel.latestWorkout {
@@ -184,9 +184,9 @@ struct HomeDashboardView: View {
             await viewModel.loadData()
         }
         .onAppear {
-            print("🏠 HomeDashboardView: APPEARED")
-            viewModel.refreshAnalytics()
-            // Trigger animations after slight delay
+            #if DEBUG
+            print("🏠 HomeDashboardView: APPEARED — first interactive frame")
+            #endif
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 withAnimation(.easeOut(duration: 0.8)) {
                     animateProgress = true
@@ -424,16 +424,6 @@ private struct WorkoutsCard: View {
             .background(Color.white)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .shadow(color: .black.opacity(0.08), radius: 15, y: 5)
-            // Orange accent line at top
-            .overlay(
-                VStack {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(AppColors.burntOrange)
-                        .frame(width: 40, height: 3)
-                        .padding(.top, 12)
-                    Spacer()
-                }
-            )
         }
         .buttonStyle(BoldCardButtonStyle())
     }
@@ -686,57 +676,73 @@ private struct WeightCard: View {
     }
 }
 
+/// Shows real biometric values, not a computed score.
+/// HRV (Apple Watch) is primary — if available, displayed as the headline number.
+/// Sleep hours are secondary — shown when HRV is unavailable.
+/// No composite score or ring: those were arbitrary and untrustworthy.
 private struct ReadinessCard: View {
-    let score: Int?
-    let animate: Bool
+    /// HRV in milliseconds from HealthKit (Apple Watch only). Primary metric.
+    let hrv: Double?
+    /// Sleep hours from HealthKit or manual log. Secondary metric when HRV is absent.
+    let sleepHours: Double?
     let onTap: () -> Void
-
-    private var display: String {
-        guard let s = score, s > 0 else { return "—" }
-        return "\(s)"
-    }
-
-    private var progress: Double {
-        guard let s = score, s > 0 else { return 0 }
-        return Double(s) / 100.0
-    }
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("READINESS")
+                    Text("RECOVERY")
                         .font(.system(size: 9, weight: .bold))
                         .tracking(0.5)
                         .foregroundStyle(AppColors.textTertiary)
 
-                    HStack(alignment: .lastTextBaseline, spacing: 2) {
-                        Text(display)
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
-                            .foregroundStyle(AppColors.textPrimary)
-
-                        if score != nil {
-                            Text("%")
+                    if let hrv = hrv {
+                        // Primary state: HRV from Apple Watch
+                        HStack(alignment: .lastTextBaseline, spacing: 2) {
+                            Text("\(Int(hrv))")
+                                .font(.system(size: 22, weight: .bold, design: .rounded))
+                                .foregroundStyle(AppColors.textPrimary)
+                            Text("ms")
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(AppColors.textTertiary)
                         }
+                        Text("HRV")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(AppColors.textTertiary.opacity(0.7))
+
+                    } else if let sleep = sleepHours, sleep > 0 {
+                        // Secondary state: sleep logged, no HRV
+                        HStack(alignment: .lastTextBaseline, spacing: 2) {
+                            Text(String(format: "%.1f", sleep))
+                                .font(.system(size: 22, weight: .bold, design: .rounded))
+                                .foregroundStyle(AppColors.textPrimary)
+                            Text("h")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(AppColors.textTertiary)
+                        }
+                        Text("sleep · no HRV")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(AppColors.textTertiary.opacity(0.7))
+
+                    } else {
+                        // Empty state
+                        Text("No sleep or HRV data")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(AppColors.textTertiary)
+                            .padding(.top, 2)
                     }
                 }
 
                 Spacer()
 
-                // Circular progress
+                // Static icon — no fabricated ring/score
                 ZStack {
                     Circle()
-                        .stroke(AppColors.divider, lineWidth: 4)
+                        .fill(AppColors.olive.opacity(0.1))
                         .frame(width: 40, height: 40)
-
-                    Circle()
-                        .trim(from: 0, to: animate ? progress : 0)
-                        .stroke(AppColors.olive, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                        .frame(width: 40, height: 40)
-                        .rotationEffect(.degrees(-90))
-                        .animation(.easeOut(duration: 1.0), value: animate)
+                    Image(systemName: hrv != nil ? "waveform.path.ecg" : "moon.zzz.fill")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(AppColors.olive)
                 }
             }
             .padding(14)

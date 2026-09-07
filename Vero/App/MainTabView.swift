@@ -1,6 +1,6 @@
 //
 //  MainTabView.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  Root tab navigation with refined design
 //
@@ -85,26 +85,49 @@ struct MainTabView: View {
         ) {
             if let workout = appState.checkInWorkout {
                 PostWorkoutCheckInView(workout: workout)
+                    .environmentObject(appState)
             }
         }
         // Next-day check-in modal (full screen)
         .fullScreenCover(isPresented: $appState.showNextDayCheckIn) {
             NextDayCheckInView()
+                .environmentObject(appState)
+        }
+        .onChange(of: appState.showPostWorkoutCheckIn) { _, val in
+            #if DEBUG
+            print("📱 MainTabView: showPostWorkoutCheckIn → \(val)")
+            #endif
+        }
+        .onChange(of: appState.showNextDayCheckIn) { _, val in
+            #if DEBUG
+            print("📱 MainTabView: showNextDayCheckIn → \(val)")
+            #endif
         }
         .onAppear {
             #if DEBUG
-            print("📱 MainTabView: onAppear — tab container ready")
+            print("📱 MainTabView: onAppear — deferring check-in check 3 s")
             #endif
-            appState.checkForPendingCheckIns()
-        }
-        .onChange(of: scenePhase) { oldPhase, newPhase in
-            if newPhase == .active && oldPhase != .active {
+            // 3 s allows auth animation + initial data restore to settle before
+            // any check-in sheet can appear.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                #if DEBUG
+                print("📱 MainTabView: running deferred checkForPendingCheckIns")
+                print("📱 MainTabView: showPostWorkoutCheckIn=\(appState.showPostWorkoutCheckIn), showNextDayCheckIn=\(appState.showNextDayCheckIn)")
+                #endif
                 appState.checkForPendingCheckIns()
             }
         }
-        .onChange(of: selectedTab) { _, newTab in
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            if newPhase == .active && oldPhase == .background {
+                #if DEBUG
+                print("📱 MainTabView: foregrounded — checkForPendingCheckIns")
+                #endif
+                appState.checkForPendingCheckIns()
+            }
+        }
+        .onChange(of: selectedTab) { old, newTab in
             #if DEBUG
-            print("📱 MainTabView: tab switched to \(newTab.title)")
+            print("📱 MainTabView: selectedTab \(old.title) → \(newTab.title)")
             #endif
         }
     }

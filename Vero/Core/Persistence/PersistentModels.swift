@@ -1,6 +1,6 @@
 //
 //  PersistentModels.swift
-//  Insio Health
+//  WellPattern Health
 //
 //  SwiftData models for local persistence.
 //  These mirror the struct-based models but are @Model classes for SwiftData.
@@ -223,7 +223,7 @@ final class PersistedDailyContext {
     var energyLevel: String // EnergyLevel raw value
     var restingHeartRate: Int?
     var hrvScore: Double?
-    var readinessScore: Int
+    var readinessScore: Int?
 
     // Nutrition fields (added for daily context sync)
     var waterIntakeMl: Int?
@@ -249,7 +249,7 @@ final class PersistedDailyContext {
         energyLevel: String,
         restingHeartRate: Int? = nil,
         hrvScore: Double? = nil,
-        readinessScore: Int,
+        readinessScore: Int? = nil,
         waterIntakeMl: Int? = nil,
         calories: Int? = nil,
         proteinGrams: Int? = nil,
