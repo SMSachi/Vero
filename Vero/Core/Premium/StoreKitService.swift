@@ -3,7 +3,7 @@
 //  WellPattern Health
 //
 //  Handles StoreKit 2 subscriptions for premium features.
-//  Supports 3-tier system: Free, Plus ($4.99/mo), Pro ($12.99/mo)
+//  Supports 3-tier system: Free, Plus ($6.99/mo), Pro ($14.99/mo)
 //  Includes free trial and restore functionality.
 //
 //  SETUP:

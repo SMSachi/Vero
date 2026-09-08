@@ -10,12 +10,12 @@
 //  - Basic workout list/history (7 days)
 //  - No trends or AI
 //
-//  PLUS TIER ($4.99/month):
+//  PLUS TIER ($6.99/month):
 //  - Weekly AI trend summary
 //  - Nutrition/water-aware weekly insights
 //  - 30-day trends and history
 //
-//  PRO TIER ($12.99/month):
+//  PRO TIER ($14.99/month):
 //  - AI summary after every workout
 //  - Weekly/monthly AI trend summaries
 //  - Deeper pattern analysis

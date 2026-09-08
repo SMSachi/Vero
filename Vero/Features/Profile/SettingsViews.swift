@@ -832,8 +832,7 @@ struct HelpView: View {
                 }
 
                 Section("Support") {
-                    // TODO: Replace insiohealth@gmail.com with WellPattern support email before shipping
-                    Link(destination: URL(string: "mailto:insiohealth@gmail.com")!) {
+                    Link(destination: URL(string: "mailto:\(WellPatternConfig.Legal.supportEmail)")!) {
                         HStack {
                             Text("Contact Support")
                             Spacer()
@@ -997,8 +996,7 @@ struct TermsOfServiceView: View {
 
                         PrivacySection(
                             title: "Contact",
-                            // TODO: Replace insiohealth@gmail.com with WellPattern support email before shipping
-                            content: "For questions about these Terms of Service, contact us at insiohealth@gmail.com."
+                            content: "For questions about these Terms of Service, contact us at \(WellPatternConfig.Legal.supportEmail)."
                         )
                     }
                 }
