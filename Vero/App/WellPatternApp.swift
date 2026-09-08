@@ -28,7 +28,8 @@ struct WellPatternApp: App {
 
     init() {
         #if DEBUG
-        print("🚀 WellPatternApp: init()")
+        let _initStart = CFAbsoluteTimeGetCurrent()
+        print("🚀 [STARTUP] WellPatternApp.init() BEGIN — main thread")
         #endif
 
         // ── Migrate UserDefaults keys from legacy Insio branding ─────────────
@@ -49,16 +50,30 @@ struct WellPatternApp: App {
         UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
         UINavigationBar.appearance().compactAppearance = navAppearance
 
-        // ── Fix B: Eager Supabase client init ────────────────────────────────
-        // SupabaseClient is a static let (lazy by default in Swift). Without this,
-        // it initializes on the FIRST sign-in call, adding several seconds of delay
-        // right as the user taps "Sign in". Touch it now so it's ready.
-        _ = SupabaseConfig.client
+        // ── Fix B: Supabase client pre-warm (off main thread) ────────────────
+        // SupabaseClient.init() reads from the iOS Keychain to restore a session.
+        // Keychain access is synchronous and can block the main thread for 2–5 s on
+        // a physical device, causing a solid black screen before SwiftUI renders.
+        // Kicking it off in a detached Task keeps the main thread free for the first
+        // render while still warming the client before the user hits sign-in.
+        Task.detached(priority: .userInitiated) {
+            let t = CFAbsoluteTimeGetCurrent()
+            _ = SupabaseConfig.client
+            #if DEBUG
+            let elapsed = (CFAbsoluteTimeGetCurrent() - t) * 1000
+            print("☁️ [STARTUP] SupabaseClient init: \(String(format: "%.0f", elapsed)) ms (off main thread)")
+            #endif
+        }
 
         // Start free trial on first launch
         Task { @MainActor in
             PremiumManager.shared.startFreeTrial()
         }
+
+        #if DEBUG
+        let _initElapsed = (CFAbsoluteTimeGetCurrent() - _initStart) * 1000
+        print("🚀 [STARTUP] WellPatternApp.init() END — \(String(format: "%.0f", _initElapsed)) ms on main thread")
+        #endif
     }
 
     var body: some Scene {
@@ -115,7 +130,7 @@ struct AppRootView: View {
 
     var body: some View {
         #if DEBUG
-        let _ = print("🏠 AppRootView body — isAuthenticated=\(authService.isAuthenticated) → branch: \(authService.isAuthenticated ? "MAIN" : "AUTH")")
+        let _ = print("🏠 [STARTUP] AppRootView body — isAuthenticated=\(authService.isAuthenticated) isLoading=\(authService.isLoading) → branch: \(authService.isAuthenticated ? "MAIN" : (authService.isLoading ? "SPLASH" : "AUTH"))")
         #endif
 
         Group {
@@ -123,9 +138,12 @@ struct AppRootView: View {
                 MainTabView()
                     .onAppear {
                         #if DEBUG
-                        print("🏠 MainTabView APPEARED")
+                        print("🏠 [TRACE 1] MainTabView.onAppear START")
                         #endif
                         appState.onAuthenticationSuccess()
+                        #if DEBUG
+                        print("🏠 [TRACE 1] MainTabView.onAppear END — onAuthenticationSuccess returned")
+                        #endif
                     }
             } else {
                 authFlow

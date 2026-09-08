@@ -111,9 +111,14 @@ struct WorkoutsListView: View {
             .navigationBarHidden(true)
         }
         .onAppear {
-            // Refresh workouts on every appearance (picks up newly added workouts)
+            #if DEBUG
+            print("💪 [TRACE 4] WorkoutsListView.onAppear START")
+            #endif
             loadWorkouts()
             startAnimations()
+            #if DEBUG
+            print("💪 [TRACE 4] WorkoutsListView.onAppear END")
+            #endif
         }
         .sheet(isPresented: $showAddWorkout) {
             AddWorkoutView(onSave: { workout in
@@ -124,14 +129,31 @@ struct WorkoutsListView: View {
     }
 
     private func loadWorkouts() {
-        // Load from persistence service
+        #if DEBUG
+        print("💪 [TRACE 5] loadWorkouts() START — fetchRecentWorkouts")
+        #endif
         workouts = persistenceService.fetchRecentWorkouts(limit: 100)
+        #if DEBUG
+        print("💪 [TRACE 5] loadWorkouts() — fetched \(workouts.count) workouts, calling loadStats()")
+        #endif
         loadStats()
+        #if DEBUG
+        print("💪 [TRACE 5] loadWorkouts() END — loadStats() returned")
+        #endif
     }
 
     private func loadStats() {
+        #if DEBUG
+        print("💪 [TRACE 6] loadStats() START — countWorkoutsThisWeek")
+        #endif
         workoutsThisWeek = persistenceService.countWorkoutsThisWeek()
+        #if DEBUG
+        print("💪 [TRACE 6] loadStats() — workoutsThisWeek=\(workoutsThisWeek), about to call calculateCurrentStreak()")
+        #endif
         currentStreak = persistenceService.calculateCurrentStreak()
+        #if DEBUG
+        print("💪 [TRACE 6] loadStats() END — streak=\(currentStreak)")
+        #endif
     }
 
     private func startAnimations() {

@@ -1052,6 +1052,34 @@ struct TrendAnalysisEngine {
             ))
         }
 
+        // Heart Rate Trend — resting HR from daily contexts
+        let hrEntries = contexts.compactMap { ctx -> (date: Date, hr: Double)? in
+            guard let rhr = ctx.restingHeartRate, rhr > 0 else { return nil }
+            return (ctx.date, Double(rhr))
+        }.sorted { $0.date < $1.date }
+
+        if let latestHR = hrEntries.last?.hr {
+            let hrValues = hrEntries.map { $0.hr }
+            let changeText: String
+            if hrValues.count >= 2 {
+                let diff = latestHR - hrValues.first!
+                changeText = String(format: "%@%.0f bpm", diff >= 0 ? "+" : "", diff)
+            } else {
+                changeText = "1 entry"
+            }
+            let minHR = 45.0
+            let maxHR = 100.0
+            let hrDataPoints = hrValues.map { CGFloat(($0 - minHR) / (maxHR - minHR)).clamped(to: 0...1) }
+            trends.append(MetricTrend(
+                title: "Heart Rate",
+                currentValue: "\(Int(latestHR)) bpm",
+                change: changeText,
+                isPositive: latestHR < 70,
+                dataPoints: hrDataPoints,
+                color: "coral"
+            ))
+        }
+
         // Average Workout Intensity
         if !workouts.isEmpty {
             let avgIntensity = workouts.map { workout -> Double in
@@ -1198,6 +1226,45 @@ struct TrendAnalysisEngine {
                 dataPoints: generateTrendData(baseValue: min(avgLiters / 3.0, 1.0), variance: 0.1),
                 color: isGood ? "blue" : "coral"
             ))
+        }
+
+        // Nutrition Trend — calories from daily contexts (weight loss only)
+        if showWeightUI {
+            let calEntries = contexts.compactMap { ctx -> (date: Date, cal: Int)? in
+                guard let c = ctx.calories, c > 0 else { return nil }
+                return (ctx.date, c)
+            }.sorted { $0.date < $1.date }
+
+            if let latestCal = calEntries.last?.cal {
+                let calValues = calEntries.map { Double($0.cal) }
+                let avgCal = calValues.reduce(0, +) / Double(calValues.count)
+                let maxVal = calValues.max() ?? 1
+                let dataPoints = calValues.map { CGFloat($0 / maxVal) }
+                let changeText: String
+                if calValues.count >= 2 {
+                    let diff = Double(latestCal) - calValues.first!
+                    changeText = String(format: "%@%.0f kcal", diff >= 0 ? "+" : "", diff)
+                } else {
+                    changeText = "1 entry"
+                }
+                trends.append(MetricTrend(
+                    title: "Nutrition",
+                    currentValue: "\(Int(avgCal)) kcal",
+                    change: changeText,
+                    isPositive: avgCal <= 2200,
+                    dataPoints: dataPoints,
+                    color: "navy"
+                ))
+            } else {
+                trends.append(MetricTrend(
+                    title: "Nutrition",
+                    currentValue: "—",
+                    change: "No data",
+                    isPositive: true,
+                    dataPoints: [],
+                    color: "navy"
+                ))
+            }
         }
 
         return trends

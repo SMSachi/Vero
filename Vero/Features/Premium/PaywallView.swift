@@ -3,7 +3,7 @@
 //  WellPattern Health
 //
 //  Premium subscription paywall with tier comparison.
-//  Shows Plus ($4.99/mo) and Pro ($12.99/mo) options.
+//  Shows Plus ($6.99/mo) and Pro ($14.99/mo) options. No yearly plans.
 //
 
 import SwiftUI
@@ -437,8 +437,8 @@ private struct SelectedTierPricing: View {
     /// Fallback prices when StoreKit is not configured (monthly-only launch)
     private var fallbackPrice: String {
         switch tier {
-        case .plus: return "$4.99"
-        case .pro: return "$12.99"
+        case .plus: return "$6.99"
+        case .pro: return "$14.99"
         default: return "$0.00"
         }
     }

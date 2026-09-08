@@ -120,45 +120,44 @@ struct SignupView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    // Terms acceptance checkbox
+                    TermsAcceptanceCheckbox(isAccepted: $acceptedTerms)
+
+                    // Error message
+                    if let error = authService.errorMessage {
+                        HStack(spacing: AppSpacing.xs) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .font(.system(size: 14))
+                            Text(error)
+                                .font(AppTypography.bodySmall)
+                        }
+                        .foregroundStyle(AppColors.error)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    // Signup button
+                    Button {
+                        signUp()
+                    } label: {
+                        HStack(spacing: AppSpacing.sm) {
+                            if isSubmitting {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .scaleEffect(0.9)
+                            }
+                            Text(isSubmitting ? "Creating account..." : "Create account")
+                                .font(AppTypography.buttonLarge)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, AppSpacing.md)
+                        .background(isFormValid ? AppColors.navy : AppColors.navy.opacity(0.5))
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.radiusMedium, style: .continuous))
+                    }
+                    .disabled(!isFormValid || isSubmitting)
                 }
             }
             .scrollDismissesKeyboard(.interactively)
-
-            // Terms acceptance checkbox
-            TermsAcceptanceCheckbox(isAccepted: $acceptedTerms)
-
-            // Error message
-            if let error = authService.errorMessage {
-                HStack(spacing: AppSpacing.xs) {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .font(.system(size: 14))
-                    Text(error)
-                        .font(AppTypography.bodySmall)
-                }
-                .foregroundStyle(AppColors.error)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            // Signup button
-            Button {
-                signUp()
-            } label: {
-                HStack(spacing: AppSpacing.sm) {
-                    if isSubmitting {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .scaleEffect(0.9)
-                    }
-                    Text(isSubmitting ? "Creating account..." : "Create account")
-                        .font(AppTypography.buttonLarge)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, AppSpacing.md)
-                .background(isFormValid ? AppColors.navy : AppColors.navy.opacity(0.5))
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: AppSpacing.radiusMedium, style: .continuous))
-            }
-            .disabled(!isFormValid || isSubmitting)
         }
         .alert("Check your email", isPresented: $showEmailConfirmation) {
             Button("OK") {

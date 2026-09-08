@@ -199,6 +199,12 @@ final class HealthKitService: ObservableObject {
             types.insert(protein)
         }
 
+        // MENSTRUAL FLOW
+        // Used to: Auto-detect menstrual phase for cycle tracking (optional feature)
+        if let menstrual = HKCategoryType.categoryType(forIdentifier: .menstrualFlow) {
+            types.insert(menstrual)
+        }
+
         return types
     }
 
@@ -238,6 +244,13 @@ final class HealthKitService: ObservableObject {
             #if DEBUG
             print("🏥 HealthKit: ✅ HKHealthStore created successfully")
             #endif
+            // Restore authorization state across restarts using UserDefaults.
+            // HealthKit's authorizationStatus(for:) always returns .notDetermined for READ-only
+            // types (we never request WRITE), so we persist the flag ourselves.
+            if UserDefaults.standard.bool(forKey: "wp.hk.hasVerifiedReadAccess") {
+                self.hasVerifiedReadAccess = true
+                self.authorizationStatus = .authorized
+            }
         } else {
             self.healthStore = nil
             self.authorizationStatus = .unavailable
@@ -310,6 +323,7 @@ final class HealthKitService: ObservableObject {
                 #endif
                 authorizationStatus = .authorized
                 hasVerifiedReadAccess = true
+                UserDefaults.standard.set(true, forKey: "wp.hk.hasVerifiedReadAccess")
                 lastError = nil
                 return true
             } else {
@@ -325,6 +339,7 @@ final class HealthKitService: ObservableObject {
                     #endif
                     authorizationStatus = .authorized
                     hasVerifiedReadAccess = true
+                    UserDefaults.standard.set(true, forKey: "wp.hk.hasVerifiedReadAccess")
                     return true
                 } else {
                     #if DEBUG
@@ -332,6 +347,7 @@ final class HealthKitService: ObservableObject {
                     #endif
                     authorizationStatus = .denied
                     hasVerifiedReadAccess = false
+                    UserDefaults.standard.set(false, forKey: "wp.hk.hasVerifiedReadAccess")
                     return false
                 }
             }
@@ -348,6 +364,7 @@ final class HealthKitService: ObservableObject {
             #endif
             authorizationStatus = .denied
             hasVerifiedReadAccess = false
+            UserDefaults.standard.set(false, forKey: "wp.hk.hasVerifiedReadAccess")
             lastError = error.localizedDescription
             return false
         }
@@ -521,12 +538,14 @@ final class HealthKitService: ObservableObject {
             #endif
             authorizationStatus = .authorized
             hasVerifiedReadAccess = true
+            UserDefaults.standard.set(true, forKey: "wp.hk.hasVerifiedReadAccess")
         } else {
             #if DEBUG
             print("🏥 HealthKit: ❌ Refresh: READ access denied or unavailable")
             #endif
             authorizationStatus = .denied
             hasVerifiedReadAccess = false
+            UserDefaults.standard.set(false, forKey: "wp.hk.hasVerifiedReadAccess")
             hasWorkoutData = false
         }
 
@@ -712,7 +731,7 @@ final class HealthKitService: ObservableObject {
         )
 
         return Workout(
-            id: UUID(),
+            id: hkWorkout.uuid,
             type: workoutType,
             startDate: hkWorkout.startDate,
             endDate: hkWorkout.endDate,
@@ -760,32 +779,38 @@ final class HealthKitService: ObservableObject {
             options: .strictStartDate
         )
 
-        return await withCheckedContinuation { continuation in
-            let query = HKStatisticsQuery(
-                quantityType: heartRateType,
-                quantitySamplePredicate: predicate,
-                options: [.discreteAverage, .discreteMax, .discreteMin]
-            ) { _, statistics, error in
-                if error != nil {
-                    continuation.resume(returning: nil)
-                    return
+        #if DEBUG
+        let t = CFAbsoluteTimeGetCurrent()
+        #endif
+        let result: HeartRateStats? = await executeQueryWithTimeout({
+            await withCheckedContinuation { continuation in
+                let query = HKStatisticsQuery(
+                    quantityType: heartRateType,
+                    quantitySamplePredicate: predicate,
+                    options: [.discreteAverage, .discreteMax, .discreteMin]
+                ) { _, statistics, error in
+                    if error != nil {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    let unit = HKUnit.count().unitDivided(by: .minute())
+                    guard let avgQuantity = statistics?.averageQuantity() else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    let average = Int(avgQuantity.doubleValue(for: unit))
+                    let max = Int(statistics?.maximumQuantity()?.doubleValue(for: unit) ?? Double(average))
+                    let min = Int(statistics?.minimumQuantity()?.doubleValue(for: unit) ?? Double(average))
+                    continuation.resume(returning: HeartRateStats(average: average, max: max, min: min))
                 }
-
-                let unit = HKUnit.count().unitDivided(by: .minute())
-                guard let avgQuantity = statistics?.averageQuantity() else {
-                    // Workout had no heart rate samples — return nil rather than fabricated zeros
-                    continuation.resume(returning: nil)
-                    return
-                }
-
-                let average = Int(avgQuantity.doubleValue(for: unit))
-                let max = Int(statistics?.maximumQuantity()?.doubleValue(for: unit) ?? Double(average))
-                let min = Int(statistics?.minimumQuantity()?.doubleValue(for: unit) ?? Double(average))
-                continuation.resume(returning: HeartRateStats(average: average, max: max, min: min))
+                healthStore.execute(query)
             }
-
-            healthStore.execute(query)
-        }
+        }, timeout: 5_000_000_000)
+        #if DEBUG
+        let elapsed = (CFAbsoluteTimeGetCurrent() - t) * 1000
+        if elapsed > 500 { print("🏥 [SLOW] fetchHeartRateStats: \(String(format: "%.0f", elapsed)) ms") }
+        #endif
+        return result
     }
 
     /// Fetch the most recent resting heart rate value.
@@ -798,36 +823,43 @@ final class HealthKitService: ObservableObject {
 
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
 
-        return await withCheckedContinuation { continuation in
-            let query = HKSampleQuery(
-                sampleType: restingHRType,
-                predicate: nil,
-                limit: 1,
-                sortDescriptors: [sortDescriptor]
-            ) { _, samples, error in
-                if let error = error {
+        #if DEBUG
+        let t = CFAbsoluteTimeGetCurrent()
+        #endif
+        let result: Int? = await executeQueryWithTimeout({
+            await withCheckedContinuation { continuation in
+                let query = HKSampleQuery(
+                    sampleType: restingHRType,
+                    predicate: nil,
+                    limit: 1,
+                    sortDescriptors: [sortDescriptor]
+                ) { _, samples, error in
+                    if let error = error {
+                        #if DEBUG
+                        print("Error fetching resting HR: \(error.localizedDescription)")
+                        #endif
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    guard let sample = samples?.first as? HKQuantitySample else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    let unit = HKUnit.count().unitDivided(by: .minute())
+                    let value = Int(sample.quantity.doubleValue(for: unit))
                     #if DEBUG
-                    print("Error fetching resting HR: \(error.localizedDescription)")
+                    print("🏥 HealthKit: fetchRestingHeartRate → \(value) bpm")
                     #endif
-                    continuation.resume(returning: nil)
-                    return
+                    continuation.resume(returning: value)
                 }
-
-                guard let sample = samples?.first as? HKQuantitySample else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-
-                let unit = HKUnit.count().unitDivided(by: .minute())
-                let value = Int(sample.quantity.doubleValue(for: unit))
-                #if DEBUG
-                print("🏥 HealthKit: fetchRestingHeartRate → \(value) bpm")
-                #endif
-                continuation.resume(returning: value)
+                healthStore.execute(query)
             }
-
-            healthStore.execute(query)
-        }
+        }, timeout: 5_000_000_000)
+        #if DEBUG
+        let elapsed = (CFAbsoluteTimeGetCurrent() - t) * 1000
+        if elapsed > 500 { print("🏥 [SLOW] fetchRestingHeartRate: \(String(format: "%.0f", elapsed)) ms") }
+        #endif
+        return result
     }
 
     // MARK: - HRV
@@ -842,36 +874,42 @@ final class HealthKitService: ObservableObject {
 
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
 
-        return await withCheckedContinuation { continuation in
-            let query = HKSampleQuery(
-                sampleType: hrvType,
-                predicate: nil,
-                limit: 1,
-                sortDescriptors: [sortDescriptor]
-            ) { _, samples, error in
-                if let error = error {
+        #if DEBUG
+        let t = CFAbsoluteTimeGetCurrent()
+        #endif
+        let result: Double? = await executeQueryWithTimeout({
+            await withCheckedContinuation { continuation in
+                let query = HKSampleQuery(
+                    sampleType: hrvType,
+                    predicate: nil,
+                    limit: 1,
+                    sortDescriptors: [sortDescriptor]
+                ) { _, samples, error in
+                    if let error = error {
+                        #if DEBUG
+                        print("Error fetching HRV: \(error.localizedDescription)")
+                        #endif
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    guard let sample = samples?.first as? HKQuantitySample else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    let value = sample.quantity.doubleValue(for: .secondUnit(with: .milli))
                     #if DEBUG
-                    print("Error fetching HRV: \(error.localizedDescription)")
+                    print("🏥 HealthKit: fetchHRV → \(String(format: "%.1f", value)) ms SDNN")
                     #endif
-                    continuation.resume(returning: nil)
-                    return
+                    continuation.resume(returning: value)
                 }
-
-                guard let sample = samples?.first as? HKQuantitySample else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-
-                // HRV SDNN is measured in milliseconds
-                let value = sample.quantity.doubleValue(for: .secondUnit(with: .milli))
-                #if DEBUG
-                print("🏥 HealthKit: fetchHRV → \(String(format: "%.1f", value)) ms SDNN")
-                #endif
-                continuation.resume(returning: value)
+                healthStore.execute(query)
             }
-
-            healthStore.execute(query)
-        }
+        }, timeout: 5_000_000_000)
+        #if DEBUG
+        let elapsed = (CFAbsoluteTimeGetCurrent() - t) * 1000
+        if elapsed > 500 { print("🏥 [SLOW] fetchHRV: \(String(format: "%.0f", elapsed)) ms") }
+        #endif
+        return result
     }
 
     // MARK: - Sleep
@@ -884,83 +922,67 @@ final class HealthKitService: ObservableObject {
             return nil
         }
 
-        // Calculate the time range for "last night" (yesterday 6pm to today 12pm)
         let calendar = Calendar.current
         let now = Date()
-
-        // Start of today
         let startOfToday = calendar.startOfDay(for: now)
-
-        // Yesterday at 6pm (sleep window start)
-        guard let sleepWindowStart = calendar.date(byAdding: .hour, value: -6, to: startOfToday) else {
+        guard let sleepWindowStart = calendar.date(byAdding: .hour, value: -6, to: startOfToday),
+              let sleepWindowEnd = calendar.date(byAdding: .hour, value: 12, to: startOfToday) else {
             return nil
         }
 
-        // Today at 12pm (sleep window end)
-        guard let sleepWindowEnd = calendar.date(byAdding: .hour, value: 12, to: startOfToday) else {
-            return nil
-        }
-
-        let predicate = HKQuery.predicateForSamples(
-            withStart: sleepWindowStart,
-            end: sleepWindowEnd,
-            options: .strictStartDate
-        )
-
+        let predicate = HKQuery.predicateForSamples(withStart: sleepWindowStart, end: sleepWindowEnd, options: .strictStartDate)
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
 
-        return await withCheckedContinuation { continuation in
-            let query = HKSampleQuery(
-                sampleType: sleepType,
-                predicate: predicate,
-                limit: HKObjectQueryNoLimit,
-                sortDescriptors: [sortDescriptor]
-            ) { _, samples, error in
-                if let error = error {
-                    #if DEBUG
-                    print("Error fetching sleep: \(error.localizedDescription)")
-                    #endif
-                    continuation.resume(returning: nil)
-                    return
-                }
-
-                guard let sleepSamples = samples as? [HKCategorySample], !sleepSamples.isEmpty else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-
-                // Calculate total sleep duration
-                // We look for asleep states (not just "in bed")
-                var totalSleepSeconds: TimeInterval = 0
-
-                for sample in sleepSamples {
-                    // Check for actual sleep states (not "in bed" which is value 0)
-                    // HKCategoryValueSleepAnalysis: inBed = 0, asleepUnspecified = 1, awake = 2, asleepCore = 3, asleepDeep = 4, asleepREM = 5
-                    if sample.value != HKCategoryValueSleepAnalysis.inBed.rawValue &&
-                       sample.value != HKCategoryValueSleepAnalysis.awake.rawValue {
-                        totalSleepSeconds += sample.endDate.timeIntervalSince(sample.startDate)
+        #if DEBUG
+        let t = CFAbsoluteTimeGetCurrent()
+        #endif
+        let result: (hours: Double, quality: SleepQuality)? = await executeQueryWithTimeout({
+            await withCheckedContinuation { continuation in
+                let query = HKSampleQuery(
+                    sampleType: sleepType,
+                    predicate: predicate,
+                    limit: HKObjectQueryNoLimit,
+                    sortDescriptors: [sortDescriptor]
+                ) { _, samples, error in
+                    if let error = error {
+                        #if DEBUG
+                        print("Error fetching sleep: \(error.localizedDescription)")
+                        #endif
+                        continuation.resume(returning: nil)
+                        return
                     }
+                    guard let sleepSamples = samples as? [HKCategorySample], !sleepSamples.isEmpty else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    var totalSleepSeconds: TimeInterval = 0
+                    for sample in sleepSamples {
+                        if sample.value != HKCategoryValueSleepAnalysis.inBed.rawValue &&
+                           sample.value != HKCategoryValueSleepAnalysis.awake.rawValue {
+                            totalSleepSeconds += sample.endDate.timeIntervalSince(sample.startDate)
+                        }
+                    }
+                    let totalHours = totalSleepSeconds / 3600
+                    #if DEBUG
+                    print("🏥 HealthKit: fetchLastNightSleep → samples=\(sleepSamples.count), asleep=\(String(format: "%.2f", totalHours)) hrs")
+                    #endif
+                    let quality: SleepQuality
+                    switch totalHours {
+                    case 8...: quality = .excellent
+                    case 7..<8: quality = .good
+                    case 6..<7: quality = .fair
+                    default: quality = .poor
+                    }
+                    continuation.resume(returning: (hours: totalHours, quality: quality))
                 }
-
-                let totalHours = totalSleepSeconds / 3600
-                #if DEBUG
-                print("🏥 HealthKit: fetchLastNightSleep → samples=\(sleepSamples.count), asleep=\(String(format: "%.2f", totalHours)) hrs")
-                #endif
-
-                // Determine sleep quality based on duration
-                let quality: SleepQuality
-                switch totalHours {
-                case 8...: quality = .excellent
-                case 7..<8: quality = .good
-                case 6..<7: quality = .fair
-                default: quality = .poor
-                }
-
-                continuation.resume(returning: (hours: totalHours, quality: quality))
+                healthStore.execute(query)
             }
-
-            healthStore.execute(query)
-        }
+        }, timeout: 5_000_000_000)
+        #if DEBUG
+        let elapsed = (CFAbsoluteTimeGetCurrent() - t) * 1000
+        if elapsed > 500 { print("🏥 [SLOW] fetchLastNightSleep: \(String(format: "%.0f", elapsed)) ms") }
+        #endif
+        return result
     }
 
     // MARK: - Nutrition & Water
@@ -974,35 +996,41 @@ final class HealthKitService: ObservableObject {
 
         let predicate = createTodayPredicate()
 
-        return await withCheckedContinuation { continuation in
-            let query = HKStatisticsQuery(
-                quantityType: waterType,
-                quantitySamplePredicate: predicate,
-                options: .cumulativeSum
-            ) { _, statistics, error in
-                if let error = error {
+        #if DEBUG
+        let t = CFAbsoluteTimeGetCurrent()
+        #endif
+        let result: Double? = await executeQueryWithTimeout({
+            await withCheckedContinuation { continuation in
+                let query = HKStatisticsQuery(
+                    quantityType: waterType,
+                    quantitySamplePredicate: predicate,
+                    options: .cumulativeSum
+                ) { _, statistics, error in
+                    if let error = error {
+                        #if DEBUG
+                        print("Error fetching water: \(error.localizedDescription)")
+                        #endif
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    guard let sum = statistics?.sumQuantity() else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    let liters = sum.doubleValue(for: .liter())
                     #if DEBUG
-                    print("Error fetching water: \(error.localizedDescription)")
+                    print("🏥 HealthKit: fetchTodayWaterIntake → \(String(format: "%.3f", liters)) L")
                     #endif
-                    continuation.resume(returning: nil)
-                    return
+                    continuation.resume(returning: liters)
                 }
-
-                guard let sum = statistics?.sumQuantity() else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-
-                // Convert to liters
-                let liters = sum.doubleValue(for: .liter())
-                #if DEBUG
-                print("🏥 HealthKit: fetchTodayWaterIntake → \(String(format: "%.3f", liters)) L")
-                #endif
-                continuation.resume(returning: liters)
+                healthStore.execute(query)
             }
-
-            healthStore.execute(query)
-        }
+        }, timeout: 5_000_000_000)
+        #if DEBUG
+        let elapsed = (CFAbsoluteTimeGetCurrent() - t) * 1000
+        if elapsed > 500 { print("🏥 [SLOW] fetchTodayWaterIntake: \(String(format: "%.0f", elapsed)) ms") }
+        #endif
+        return result
     }
 
     /// Nutrition values for the day
@@ -1206,6 +1234,37 @@ extension HealthKitService {
                 continuation.resume(returning: samples?.count ?? 0)
             }
             healthStore.execute(query)
+        }
+    }
+}
+
+// MARK: - Cycle / Reproductive Health
+
+extension HealthKitService {
+
+    /// Returns true if HealthKit has any menstrual flow data for today.
+    /// Used to auto-suggest the Menstruation phase in CycleLoggingView.
+    func hasTodayMenstrualFlow() async -> Bool {
+        guard let store = healthStore,
+              let menstrualType = HKCategoryType.categoryType(forIdentifier: .menstrualFlow),
+              !isSimulator else { return false }
+
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday)!
+        let predicate = HKQuery.predicateForSamples(withStart: startOfToday, end: endOfToday)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: menstrualType,
+                predicate: predicate,
+                limit: 1,
+                sortDescriptors: nil
+            ) { _, samples, _ in
+                let hasSamples = !(samples ?? []).isEmpty
+                continuation.resume(returning: hasSamples)
+            }
+            store.execute(query)
         }
     }
 }

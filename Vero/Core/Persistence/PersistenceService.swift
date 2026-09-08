@@ -433,34 +433,84 @@ final class PersistenceService: ObservableObject {
         return persisted
     }
 
-    /// Update existing daily context
+    /// Update existing daily context using merge semantics.
+    ///
+    /// MERGE RULES:
+    /// - HK-owned biometrics (restingHR, hrv, readiness, stress, energy): always update —
+    ///   these are fresh measurements and should replace stale cached values.
+    /// - User-owned sleep: only update if incoming > 0. Zero means HealthKit had no sleep
+    ///   data, NOT that the user slept 0 hours. A manual log of 9h must survive a subsequent
+    ///   HK fetch that returns 0.
+    /// - User-owned nutrition / weight: only update if incoming is non-nil (and > 0 for weight).
+    ///   nil means the caller (typically HomeViewModel.fetchDailyContext) did not receive this
+    ///   value from HealthKit and the field is absent from the incoming struct — never a
+    ///   deliberate nil-write from a manual logging view, which always passes the current value.
     private func updatePersistedContext(_ persisted: PersistedDailyContext, from ctx: DailyContext) {
-        persisted.sleepHours = ctx.sleepHours
-        persisted.sleepQuality = ctx.sleepQuality.rawValue
-        persisted.stressLevel = ctx.stressLevel.rawValue
-        persisted.energyLevel = ctx.energyLevel.rawValue
+        #if DEBUG
+        print("📊 [TRACE 8] updatePersistedContext() START — sleep=\(ctx.sleepHours)h water=\(ctx.waterIntakeMl.map {"\($0)ml"} ?? "nil") weight=\(ctx.weightKg.map {"\($0)kg"} ?? "nil") hrv=\(ctx.hrvScore.map {"\($0)ms"} ?? "nil")")
+        #endif
+
+        // HK-owned biometrics: fresh measurement always wins
         persisted.restingHeartRate = ctx.restingHeartRate
         persisted.hrvScore = ctx.hrvScore
         persisted.readinessScore = ctx.readinessScore
-        // Nutrition fields
-        persisted.waterIntakeMl = ctx.waterIntakeMl
-        persisted.calories = ctx.calories
-        persisted.proteinGrams = ctx.proteinGrams
-        persisted.carbsGrams = ctx.carbsGrams
-        persisted.fatGrams = ctx.fatGrams
-        // Weight fields
-        persisted.weightKg = ctx.weightKg
-        persisted.bodyFatPercentage = ctx.bodyFatPercentage
+        persisted.stressLevel = ctx.stressLevel.rawValue
+        persisted.energyLevel = ctx.energyLevel.rawValue
+
+        // Sleep: only update if HK actually returned sleep data (> 0)
+        // Zero means HealthKit has no record — preserve any manually logged value
+        if ctx.sleepHours > 0 {
+            #if DEBUG
+            print("📊 [TRACE 8] sleep → UPDATING to \(ctx.sleepHours)h (was \(persisted.sleepHours)h)")
+            #endif
+            persisted.sleepHours = ctx.sleepHours
+            persisted.sleepQuality = ctx.sleepQuality.rawValue
+        } else {
+            #if DEBUG
+            print("📊 [TRACE 8] sleep → PRESERVED \(persisted.sleepHours)h (incoming was 0)")
+            #endif
+        }
+
+        // Nutrition / weight: only update when the caller provided a real value
+        // nil means this field was absent from the incoming context (HK had no data)
+        if let v = ctx.waterIntakeMl {
+            #if DEBUG
+            print("📊 [TRACE 8] water → UPDATING to \(v)ml (was \(persisted.waterIntakeMl?.description ?? "nil")ml)")
+            #endif
+            persisted.waterIntakeMl = v
+        } else {
+            #if DEBUG
+            print("📊 [TRACE 8] water → PRESERVED \(persisted.waterIntakeMl?.description ?? "nil")ml (incoming was nil)")
+            #endif
+        }
+        if let v = ctx.calories { persisted.calories = v }
+        if let v = ctx.proteinGrams { persisted.proteinGrams = v }
+        if let v = ctx.carbsGrams { persisted.carbsGrams = v }
+        if let v = ctx.fatGrams { persisted.fatGrams = v }
+        if let v = ctx.weightKg, v > 0 {
+            #if DEBUG
+            print("📊 [TRACE 8] weight → UPDATING to \(v)kg (was \(persisted.weightKg?.description ?? "nil")kg)")
+            #endif
+            persisted.weightKg = v
+        } else {
+            #if DEBUG
+            print("📊 [TRACE 8] weight → PRESERVED \(persisted.weightKg?.description ?? "nil")kg (incoming was \(ctx.weightKg?.description ?? "nil"))")
+            #endif
+        }
+        if let v = ctx.bodyFatPercentage { persisted.bodyFatPercentage = v }
+        if let v = ctx.cyclePhase { persisted.cyclePhase = v.rawValue }
+        if let v = ctx.cycleDay { persisted.cycleDay = v }
+
         persisted.updatedAt = Date()
 
         do {
             try context.save()
             #if DEBUG
-            print("📊 PersistenceService: ✅ Updated daily context - water=\(ctx.waterIntakeMl ?? 0)ml, weight=\(ctx.weightKg ?? 0)kg")
+            print("📊 [TRACE 8] updatePersistedContext() COMPLETE ✅")
             #endif
         } catch {
             #if DEBUG
-            print("📊 PersistenceService: ❌ Error updating daily context: \(error)")
+            print("📊 [TRACE 8] updatePersistedContext() SAVE ERROR ❌: \(error)")
             #endif
         }
     }
@@ -638,22 +688,29 @@ final class PersistenceService: ObservableObject {
     func saveNextDayRecovery(_ recovery: NextDayRecovery, for workoutId: UUID? = nil) -> PersistedNextDayRecovery {
         let persisted = PersistedNextDayRecovery(from: recovery)
 
-        // Link to related workout if provided
+        // Insert into context FIRST — SwiftData requires backing data to be initialized
+        // before any relationship property is read or written. Setting relatedWorkout
+        // on an uninserted @Model object triggers "Never access a full future backing
+        // data" because the backing store placeholder is not yet materialized.
+        context.insert(persisted)
+
+        // Link to related workout AFTER insert (both objects now have valid contexts)
         if let workoutId = workoutId,
            let workout = fetchPersistedWorkout(id: workoutId) {
+            #if DEBUG
+            print("📈 [RECOVERY] linking recovery to workout \(workoutId)")
+            #endif
             persisted.relatedWorkout = workout
         }
-
-        context.insert(persisted)
 
         do {
             try context.save()
             #if DEBUG
-            print("PersistenceService: Saved next day recovery for \(recovery.date)")
+            print("📈 [RECOVERY] saveNextDayRecovery ✅ date=\(recovery.date) workoutId=\(workoutId?.uuidString ?? "nil")")
             #endif
         } catch {
             #if DEBUG
-            print("PersistenceService: Error saving next day recovery: \(error)")
+            print("📈 [RECOVERY] saveNextDayRecovery ❌ \(error)")
             #endif
         }
 
@@ -967,6 +1024,10 @@ final class PersistenceService: ObservableObject {
 
     /// Calculate current workout streak (consecutive days)
     func calculateCurrentStreak() -> Int {
+        #if DEBUG
+        print("📈 [TRACE 7] calculateCurrentStreak() START")
+        #endif
+
         var descriptor = FetchDescriptor<PersistedWorkout>(
             sortBy: [SortDescriptor(\.startDate, order: .reverse)]
         )
@@ -980,7 +1041,12 @@ final class PersistenceService: ObservableObject {
                 print("📈 [STREAK] Most recent workout: \(first.startDate)")
             }
             #endif
-            guard !results.isEmpty else { return 0 }
+            guard !results.isEmpty else {
+                #if DEBUG
+                print("📈 [TRACE 7] calculateCurrentStreak() — no workouts, returning 0")
+                #endif
+                return 0
+            }
 
             let calendar = Calendar.current
             var streak = 0
@@ -989,26 +1055,53 @@ final class PersistenceService: ObservableObject {
             // Group workouts by day
             let workoutDays = Set(results.map { calendar.startOfDay(for: $0.startDate) })
 
-            // Check if there's a workout today or yesterday
-            let yesterday = calendar.date(byAdding: .day, value: -1, to: currentDate)!
+            #if DEBUG
+            print("📈 [TRACE 7] unique workout days in set: \(workoutDays.count), today=\(currentDate)")
+            #endif
 
-            if !workoutDays.contains(currentDate) && !workoutDays.contains(yesterday) {
+            // Check if there's a workout today or yesterday
+            let initialYesterday = calendar.date(byAdding: .day, value: -1, to: currentDate)!
+
+            if !workoutDays.contains(currentDate) && !workoutDays.contains(initialYesterday) {
+                #if DEBUG
+                print("📈 [TRACE 7] calculateCurrentStreak() — no workout today or yesterday, returning 0")
+                #endif
                 return 0 // Streak broken
             }
 
-            // Count backwards
-            while workoutDays.contains(currentDate) || workoutDays.contains(yesterday) {
-                if workoutDays.contains(currentDate) {
-                    streak += 1
-                }
-                currentDate = calendar.date(byAdding: .day, value: -1, to: currentDate)!
-                if streak > 30 { break } // Safety limit
+            // FIX: if today has no workout, start counting from yesterday
+            if !workoutDays.contains(currentDate) {
+                currentDate = initialYesterday
             }
 
+            #if DEBUG
+            print("📈 [TRACE 7] entering streak loop, startDate=\(currentDate)")
+            #endif
+
+            // Count consecutive workout days backwards from currentDate.
+            // FIX: loop condition checks only currentDate (not a fixed 'yesterday') so it
+            // exits as soon as a gap is found. Previous code captured 'yesterday' before the
+            // loop and never updated it, causing an infinite loop when yesterday was in the set.
+            var loopIteration = 0
+            while workoutDays.contains(currentDate) {
+                loopIteration += 1
+                streak += 1
+                #if DEBUG
+                if loopIteration <= 35 {
+                    print("📈 [TRACE 7] loop iter \(loopIteration): currentDate=\(currentDate) streak=\(streak)")
+                }
+                #endif
+                currentDate = calendar.date(byAdding: .day, value: -1, to: currentDate)!
+                if streak > 30 { break } // Safety cap matching fetch limit
+            }
+
+            #if DEBUG
+            print("📈 [TRACE 7] calculateCurrentStreak() END — streak=\(streak) after \(loopIteration) iterations")
+            #endif
             return streak
         } catch {
             #if DEBUG
-            print("PersistenceService: Error calculating streak: \(error)")
+            print("📈 [TRACE 7] calculateCurrentStreak() ERROR: \(error.localizedDescription)")
             #endif
             return 0
         }

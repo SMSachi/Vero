@@ -51,7 +51,7 @@ struct TrendsView: View {
                         // Row 1: Heart Rate (larger) + Sleep
                         HStack(spacing: 12) {
                             HeartRateCard(
-                                trend: viewModel.metricTrends.first { $0.title.contains("Heart") },
+                                trend: viewModel.metricTrends.first { $0.title == "Heart Rate" },
                                 animate: animateCards,
                                 onTap: { selectedMetric = .heartRate }
                             )
@@ -66,18 +66,32 @@ struct TrendsView: View {
                             .frame(width: 140)
                         }
 
-                        // Row 2: Hydration + Weight/Workouts
+                        // Row 2: HRV + Hydration
                         HStack(spacing: 12) {
+                            HRVTrendCard(
+                                trend: viewModel.metricTrends.first { $0.title.contains("HRV") },
+                                onTap: { selectedMetric = .hrv }
+                            )
+
                             HydrationTrendCard(
                                 trend: viewModel.metricTrends.first { $0.title.contains("Hydration") },
                                 animate: animateCards,
                                 onTap: { selectedMetric = .hydration }
                             )
+                        }
+                        .frame(height: 100)
 
+                        // Row 3: Weight + Nutrition (Weight Loss) or Workouts
+                        HStack(spacing: 12) {
                             if goalService.shouldShowWeightUI {
                                 WeightTrendCard(
                                     trend: viewModel.metricTrends.first { $0.title.contains("Weight") },
                                     onTap: { selectedMetric = .weight }
+                                )
+
+                                NutritionTrendCard(
+                                    trend: viewModel.metricTrends.first { $0.title.contains("Nutrition") },
+                                    onTap: { selectedMetric = .nutrition }
                                 )
                             } else {
                                 WorkoutsTrendCard(
@@ -141,9 +155,11 @@ struct TrendsView: View {
 
 enum TrendMetricType: String, Identifiable, Hashable {
     case heartRate = "Heart Rate"
+    case hrv = "HRV"
     case sleep = "Sleep"
     case hydration = "Hydration"
     case weight = "Weight"
+    case nutrition = "Nutrition"
     case workouts = "Workouts"
 
     var id: String { rawValue }
@@ -151,9 +167,11 @@ enum TrendMetricType: String, Identifiable, Hashable {
     var icon: String {
         switch self {
         case .heartRate: return "heart.fill"
+        case .hrv: return "waveform.path.ecg"
         case .sleep: return "moon.zzz.fill"
         case .hydration: return "drop.fill"
         case .weight: return "scalemass.fill"
+        case .nutrition: return "fork.knife"
         case .workouts: return "figure.run"
         }
     }
@@ -161,9 +179,11 @@ enum TrendMetricType: String, Identifiable, Hashable {
     var color: Color {
         switch self {
         case .heartRate: return AppColors.coral
-        case .sleep: return AppColors.olive
+        case .hrv: return AppColors.olive
+        case .sleep: return AppColors.navy
         case .hydration: return AppColors.waterAccent
         case .weight: return AppColors.navy
+        case .nutrition: return AppColors.burntOrange
         case .workouts: return AppColors.burntOrange
         }
     }
@@ -336,16 +356,17 @@ private struct HeartRateCard: View {
 
                 // Change badge (same style as Home streak badge)
                 if !change.isEmpty {
+                    let badgeColor: Color = isPositive ? AppColors.olive : AppColors.error
                     HStack(spacing: 4) {
-                        Image(systemName: isPositive ? "arrow.up.right" : "arrow.down.right")
+                        Image(systemName: isPositive ? "arrow.down.right" : "arrow.up.right")
                             .font(.system(size: 10, weight: .bold))
                         Text(change)
                             .font(.system(size: 11, weight: .semibold))
                     }
-                    .foregroundStyle(AppColors.coral)
+                    .foregroundStyle(badgeColor)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(AppColors.coral.opacity(0.12))
+                    .background(badgeColor.opacity(0.12))
                     .clipShape(Capsule())
                 }
 
@@ -541,7 +562,7 @@ private struct WeightTrendCard: View {
                     if !change.isEmpty {
                         Text(change)
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(isGoodTrend ? AppColors.olive : AppColors.coral)
+                            .foregroundStyle(isGoodTrend ? AppColors.olive : AppColors.error)
                             .lineLimit(1)
                     }
                 }
@@ -603,6 +624,116 @@ private struct WorkoutsTrendCard: View {
                         .lineLimit(1)
 
                     Text(String(format: "%.1f / wk", averagePerWeek))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(AppColors.burntOrange)
+                        .lineLimit(1)
+                }
+                .layoutPriority(1)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AppColors.textTertiary.opacity(0.5))
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
+        }
+        .buttonStyle(TrendCardButtonStyle())
+    }
+}
+
+// HRV - Olive tint (matches sleep, biometric family)
+private struct HRVTrendCard: View {
+    let trend: MetricTrend?
+    let onTap: () -> Void
+
+    private var hasData: Bool { trend?.currentValue != "—" && trend != nil }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(AppColors.olive.opacity(0.15))
+                        .frame(width: 30, height: 30)
+                    Image(systemName: "waveform.path.ecg")
+                        .font(.system(size: 13))
+                        .foregroundStyle(AppColors.olive)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("HRV")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.3)
+                        .foregroundStyle(AppColors.textTertiary)
+                        .lineLimit(1)
+
+                    Text(trend?.currentValue ?? "—")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppColors.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+
+                    Text(hasData ? "avg HRV" : "no data yet")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(AppColors.olive)
+                        .lineLimit(1)
+                }
+                .layoutPriority(1)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AppColors.textTertiary.opacity(0.5))
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
+        }
+        .buttonStyle(TrendCardButtonStyle())
+    }
+}
+
+// Nutrition - Burnt Orange tint (Weight Loss goal only)
+private struct NutritionTrendCard: View {
+    let trend: MetricTrend?
+    let onTap: () -> Void
+
+    private var hasData: Bool { trend?.currentValue != "—" && trend != nil }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(AppColors.burntOrange.opacity(0.12))
+                        .frame(width: 30, height: 30)
+                    Image(systemName: "fork.knife")
+                        .font(.system(size: 12))
+                        .foregroundStyle(AppColors.burntOrange)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("NUTRITION")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.3)
+                        .foregroundStyle(AppColors.textTertiary)
+                        .lineLimit(1)
+
+                    Text(trend?.currentValue ?? "—")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppColors.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+
+                    Text(hasData ? "avg daily" : "no data yet")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(AppColors.burntOrange)
                         .lineLimit(1)
@@ -709,7 +840,7 @@ private struct MiniSparkline: View {
                     }
                 }
                 .stroke(
-                    isPositive ? AppColors.olive : AppColors.coral,
+                    isPositive ? AppColors.olive : AppColors.error,
                     style: StrokeStyle(lineWidth: 2, lineCap: .round)
                 )
             }
@@ -904,10 +1035,12 @@ private struct MetricsList: View {
     }
 
     private func metricType(for trend: MetricTrend) -> TrendMetricType? {
-        if trend.title.contains("Heart") { return .heartRate }
+        if trend.title == "Heart Rate" { return .heartRate }
+        if trend.title.contains("HRV") { return .hrv }
         if trend.title.contains("Sleep") { return .sleep }
         if trend.title.contains("Weight") { return .weight }
         if trend.title.contains("Hydration") { return .hydration }
+        if trend.title.contains("Nutrition") || trend.title.contains("Calorie") { return .nutrition }
         if trend.title.contains("Intensity") || trend.title.contains("Workout") { return .workouts }
         return nil
     }
@@ -951,7 +1084,7 @@ private struct MetricListRow: View {
                                 Text(trend.change)
                                     .font(.system(size: 11, weight: .semibold))
                             }
-                            .foregroundStyle(trend.isPositive ? AppColors.olive : AppColors.coral)
+                            .foregroundStyle(trend.isPositive ? AppColors.olive : AppColors.error)
                         }
                     }
                 }
@@ -1077,6 +1210,10 @@ struct MetricDetailView: View {
             data = dataService.fetchWeightData(days: days)
         case .heartRate:
             data = dataService.fetchHeartRateData(days: days)
+        case .hrv:
+            data = dataService.fetchHRVData(days: days)
+        case .nutrition:
+            data = dataService.fetchNutritionData(days: days)
         case .workouts:
             data = dataService.fetchWorkoutsData(days: days)
         }
@@ -1181,16 +1318,17 @@ private struct MetricChartCard: View {
                 Spacer()
 
                 // Change badge
+                let badgeColor: Color = data.isPositiveChange ? AppColors.olive : AppColors.error
                 HStack(spacing: 4) {
                     Image(systemName: data.isPositiveChange ? "arrow.up.right" : "arrow.down.right")
                         .font(.system(size: 10, weight: .bold))
                     Text(data.changeLabel)
                         .font(.system(size: 12, weight: .semibold))
                 }
-                .foregroundStyle(data.isPositiveChange ? AppColors.olive : AppColors.coral)
+                .foregroundStyle(badgeColor)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background((data.isPositiveChange ? AppColors.olive : AppColors.coral).opacity(0.12))
+                .background(badgeColor.opacity(0.12))
                 .clipShape(Capsule())
             }
 

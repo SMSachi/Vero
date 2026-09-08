@@ -55,9 +55,52 @@ struct DailyContext: Identifiable, Codable {
         waterIntakeMl != nil || calories != nil || proteinGrams != nil
     }
 
+    // MARK: - Cycle Tracking (optional, personal health)
+    var cyclePhase: CyclePhase?
+    var cycleDay: Int?
+
     /// Whether weight data has been logged
     var hasWeightData: Bool {
         weightKg != nil || bodyFatPercentage != nil
+    }
+
+    /// Whether cycle data has been logged today
+    var hasCycleData: Bool {
+        cyclePhase != nil
+    }
+}
+
+enum CyclePhase: String, Codable, CaseIterable {
+    case menstruation = "Menstruation"
+    case follicular = "Follicular"
+    case ovulation = "Ovulation"
+    case luteal = "Luteal"
+
+    var icon: String {
+        switch self {
+        case .menstruation: return "drop.fill"
+        case .follicular: return "sun.min.fill"
+        case .ovulation: return "sparkle"
+        case .luteal: return "moon.fill"
+        }
+    }
+
+    var shortDescription: String {
+        switch self {
+        case .menstruation: return "Menstrual"
+        case .follicular: return "Follicular"
+        case .ovulation: return "Ovulation"
+        case .luteal: return "Luteal"
+        }
+    }
+
+    var aiContext: String {
+        switch self {
+        case .menstruation: return "menstrual phase (may affect energy and recovery)"
+        case .follicular: return "follicular phase (energy typically building)"
+        case .ovulation: return "ovulation phase (often peak energy)"
+        case .luteal: return "luteal phase (recovery may benefit from extra care)"
+        }
     }
 }
 

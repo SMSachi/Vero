@@ -236,6 +236,10 @@ final class PersistedDailyContext {
     var weightKg: Double?
     var bodyFatPercentage: Double?
 
+    // Cycle tracking (optional)
+    var cyclePhase: String?
+    var cycleDay: Int?
+
     // Metadata
     var createdAt: Date
     var updatedAt: Date
@@ -256,7 +260,9 @@ final class PersistedDailyContext {
         carbsGrams: Int? = nil,
         fatGrams: Int? = nil,
         weightKg: Double? = nil,
-        bodyFatPercentage: Double? = nil
+        bodyFatPercentage: Double? = nil,
+        cyclePhase: String? = nil,
+        cycleDay: Int? = nil
     ) {
         self.contextId = contextId
         self.date = date
@@ -274,6 +280,8 @@ final class PersistedDailyContext {
         self.fatGrams = fatGrams
         self.weightKg = weightKg
         self.bodyFatPercentage = bodyFatPercentage
+        self.cyclePhase = cyclePhase
+        self.cycleDay = cycleDay
         self.createdAt = Date()
         self.updatedAt = Date()
     }
@@ -296,7 +304,9 @@ final class PersistedDailyContext {
             carbsGrams: context.carbsGrams,
             fatGrams: context.fatGrams,
             weightKg: context.weightKg,
-            bodyFatPercentage: context.bodyFatPercentage
+            bodyFatPercentage: context.bodyFatPercentage,
+            cyclePhase: context.cyclePhase?.rawValue,
+            cycleDay: context.cycleDay
         )
     }
 
@@ -320,6 +330,8 @@ final class PersistedDailyContext {
         context.fatGrams = fatGrams
         context.weightKg = weightKg
         context.bodyFatPercentage = bodyFatPercentage
+        context.cyclePhase = cyclePhase.flatMap { CyclePhase(rawValue: $0) }
+        context.cycleDay = cycleDay
         return context
     }
 }

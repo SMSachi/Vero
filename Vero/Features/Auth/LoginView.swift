@@ -130,7 +130,7 @@ struct LoginView: View {
                 .disabled(!isFormValid || isSubmitting)
             }
         }
-        .scrollDismissesKeyboard(.never)
+        .scrollDismissesKeyboard(.interactively)
         .sheet(isPresented: $showResetPassword) {
             ResetPasswordView()
         }

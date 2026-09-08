@@ -48,25 +48,24 @@ struct MainTabView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Tab content — all four views live simultaneously so state (ViewModels,
-            // scroll position) persists across tab switches. No UIPageViewController,
-            // no gesture recognizer conflicts.
-            ZStack {
-                HomeDashboardView()
-                    .opacity(selectedTab == .home ? 1 : 0)
-                    .allowsHitTesting(selectedTab == .home)
-
-                WorkoutsListView()
-                    .opacity(selectedTab == .workouts ? 1 : 0)
-                    .allowsHitTesting(selectedTab == .workouts)
-
-                TrendsView()
-                    .opacity(selectedTab == .trends ? 1 : 0)
-                    .allowsHitTesting(selectedTab == .trends)
-
-                ProfileView()
-                    .opacity(selectedTab == .profile ? 1 : 0)
-                    .allowsHitTesting(selectedTab == .profile)
+            // DIAGNOSTIC: only the active tab is mounted at a time.
+            // Previously all four views lived simultaneously in a ZStack
+            // (opacity+allowsHitTesting pattern). That is the suspected cause
+            // of the physical-device UI freeze: layered NavigationStacks,
+            // simultaneous .task/.onAppear work, and potential hit-test bleed.
+            // This diagnostic change isolates whether removing the multi-mount
+            // resolves the freeze. Revert after confirmation.
+            Group {
+                switch selectedTab {
+                case .home:
+                    HomeDashboardView()
+                case .workouts:
+                    WorkoutsListView()
+                case .trends:
+                    TrendsView()
+                case .profile:
+                    ProfileView()
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(AppColors.background)
@@ -105,7 +104,16 @@ struct MainTabView: View {
         }
         .onAppear {
             #if DEBUG
-            print("📱 MainTabView: onAppear — deferring check-in check 3 s")
+            // ─── Main-thread responsiveness diagnostic ───────────────────
+            // Timer fires every 2 s on the main run loop.
+            // • If it KEEPS printing while the UI is frozen → main thread is
+            //   alive; the problem is hit-testing or an overlay (scenario A).
+            // • If it STOPS printing while the UI is frozen → the main thread
+            //   itself is blocked (sync loop, deadlock, watchdog — scenario B).
+            Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+                print(String(format: "💓 [HEARTBEAT] main thread alive t=%.0f", Date().timeIntervalSince1970))
+            }
+            print("📱 MainTabView: onAppear — heartbeat started, deferring check-in check 3 s")
             #endif
             // 3 s allows auth animation + initial data restore to settle before
             // any check-in sheet can appear.

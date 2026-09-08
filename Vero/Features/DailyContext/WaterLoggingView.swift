@@ -16,8 +16,9 @@ struct WaterLoggingView: View {
     /// Callback when water is saved - used to refresh parent views
     var onSave: (() -> Void)?
 
-    // State - internal value is always in display units for slider
+    // State - internal value is always in display units for entry
     @State private var displayValue: Double = 0
+    @State private var waterText: String = "0"
     @State private var isSaving = false
     @State private var showSuccess = false
     @State private var animateWave = false
@@ -61,8 +62,8 @@ struct WaterLoggingView: View {
 
                     Spacer()
 
-                    // Slider for fine control
-                    sliderSection
+                    // Direct numeric entry
+                    numericEntrySection
                         .padding(.horizontal, 24)
 
                     Spacer()
@@ -83,10 +84,16 @@ struct WaterLoggingView: View {
             }
         }
         .onAppear {
+            #if DEBUG
+            print("💧 [TRACE 10] WaterLoggingView.onAppear START")
+            #endif
             loadExistingIntake()
             withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
                 animateWave = true
             }
+            #if DEBUG
+            print("💧 [TRACE 10] WaterLoggingView.onAppear END — displayValue=\(displayValue) waterText=\(waterText)")
+            #endif
         }
     }
 
@@ -162,9 +169,16 @@ struct WaterLoggingView: View {
 
     private func quickAddButton(label: String, amount: Double) -> some View {
         Button {
+            #if DEBUG
+            print("💧 [TRACE 10] quickAddButton tapped: +\(amount) \(units.volumeUnit), displayValue before=\(displayValue)")
+            #endif
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 displayValue = min(displayValue + amount, units.volumeSliderRange.upperBound)
+                waterText = String(format: units.isMetric ? "%.2f" : "%.0f", displayValue)
             }
+            #if DEBUG
+            print("💧 [TRACE 10] quickAddButton after set: displayValue=\(displayValue) waterText=\(waterText)")
+            #endif
         } label: {
             VStack(spacing: 6) {
                 Text(label)
@@ -182,38 +196,49 @@ struct WaterLoggingView: View {
         }
     }
 
-    // MARK: - Slider Section
+    // MARK: - Numeric Entry Section
 
-    private var sliderSection: some View {
+    private var numericEntrySection: some View {
         VStack(spacing: 12) {
-            Text("ADJUST")
+            Text("SET TOTAL")
                 .font(.system(size: 11, weight: .bold))
                 .tracking(1)
                 .foregroundStyle(AppColors.textTertiary)
 
-            VStack(spacing: 8) {
-                Slider(
-                    value: $displayValue,
-                    in: units.volumeSliderRange,
-                    step: units.volumeSliderStep
-                )
-                .tint(AppColors.waterAccent)
+            HStack(spacing: 0) {
+                TextField("0", text: $waterText)
+                    .keyboardType(.decimalPad)
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppColors.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .onChange(of: waterText) { _, newValue in
+                        #if DEBUG
+                        print("💧 [TRACE 10] onChange(waterText) fired — newValue='\(newValue)'")
+                        #endif
+                        let filtered = newValue.filter { $0.isNumber || $0 == "." }
+                        if filtered != newValue { waterText = filtered }
+                        if let parsed = Double(filtered) {
+                            let clamped = max(0, min(units.volumeSliderRange.upperBound, parsed))
+                            displayValue = clamped
+                        }
+                        #if DEBUG
+                        print("💧 [TRACE 10] onChange(waterText) done — displayValue=\(displayValue)")
+                        #endif
+                    }
 
-                HStack {
-                    Text("0 \(units.volumeUnit)")
-                    Spacer()
-                    Text(units.dailyHydrationGoalFormatted + " goal")
-                    Spacer()
-                    Text(units.isMetric
-                         ? "\(Int(units.volumeSliderRange.upperBound)) L"
-                         : "\(Int(units.volumeSliderRange.upperBound)) oz")
-                }
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(AppColors.textTertiary)
+                Text(units.volumeUnit)
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(AppColors.textSecondary)
+                    .padding(.leading, 6)
             }
-            .padding(16)
+            .padding(.vertical, 16)
+            .padding(.horizontal, 20)
             .background(Color.white)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AppColors.waterAccent.opacity(0.3), lineWidth: 1.5)
+            )
             .shadow(color: .black.opacity(0.05), radius: 10, y: 3)
         }
     }
@@ -247,12 +272,25 @@ struct WaterLoggingView: View {
     // MARK: - Actions
 
     private func loadExistingIntake() {
+        #if DEBUG
+        print("💧 [TRACE 10] loadExistingIntake() START")
+        #endif
         if let context = persistenceService.fetchTodayDailyContext(),
            let waterMl = context.waterIntakeMl, waterMl > 0 {
-            // Convert stored liters to display units
             let liters = Double(waterMl) / 1000.0
             displayValue = units.displayVolume(liters)
+            #if DEBUG
+            print("💧 [TRACE 10] loadExistingIntake() — loaded \(waterMl)ml → displayValue=\(displayValue) \(units.volumeUnit)")
+            #endif
+        } else {
+            #if DEBUG
+            print("💧 [TRACE 10] loadExistingIntake() — no existing water data, displayValue remains \(displayValue)")
+            #endif
         }
+        waterText = String(format: units.isMetric ? "%.2f" : "%.0f", displayValue)
+        #if DEBUG
+        print("💧 [TRACE 10] loadExistingIntake() END — waterText=\(waterText)")
+        #endif
     }
 
     private func save() {

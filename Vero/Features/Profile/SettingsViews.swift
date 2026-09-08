@@ -12,33 +12,31 @@ import UserNotifications
 
 struct NotificationSettingsView: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("postWorkoutReminder") private var postWorkoutReminder = true
-    @AppStorage("morningCheckIn") private var morningCheckIn = true
-    @AppStorage("weeklyReport") private var weeklyReport = true
-    @State private var authorizationStatus: UNAuthorizationStatus = .notDetermined
-    @State private var isRequesting = false
+    @StateObject private var notifService = NotificationService.shared
+
+    // Per-type reminder toggles — stored in UserDefaults, drive notification scheduling
+    @AppStorage("reminder_workout") private var workoutReminder = false
+    @AppStorage("reminder_hydration") private var hydrationReminder = false
+    @AppStorage("reminder_sleep") private var sleepReminder = false
+    @AppStorage("reminder_nutrition") private var nutritionReminder = false
 
     private var statusColor: Color {
-        switch authorizationStatus {
+        switch notifService.authorizationStatus {
         case .authorized, .provisional: return AppColors.olive
-        case .denied: return AppColors.coral
+        case .denied: return AppColors.error
         default: return AppColors.textTertiary
         }
     }
 
     private var statusText: String {
-        switch authorizationStatus {
+        switch notifService.authorizationStatus {
         case .authorized: return "Enabled"
         case .provisional: return "Provisional"
-        case .denied: return "Denied"
-        case .notDetermined: return "Not Enabled"
+        case .denied: return "Denied in Settings"
+        case .notDetermined: return "Permission not yet granted"
         case .ephemeral: return "Ephemeral"
         @unknown default: return "Unknown"
         }
-    }
-
-    private var isEnabled: Bool {
-        authorizationStatus == .authorized || authorizationStatus == .provisional
     }
 
     var body: some View {
@@ -52,7 +50,7 @@ struct NotificationSettingsView: View {
                                 .fill(statusColor.opacity(0.15))
                                 .frame(width: 44, height: 44)
 
-                            Image(systemName: isEnabled ? "bell.badge.fill" : "bell.slash")
+                            Image(systemName: notifService.isAuthorized ? "bell.badge.fill" : "bell.slash")
                                 .font(.system(size: 20, weight: .medium))
                                 .foregroundStyle(statusColor)
                         }
@@ -66,120 +64,130 @@ struct NotificationSettingsView: View {
                         }
 
                         Spacer()
+
+                        if notifService.authorizationStatus == .denied {
+                            Button("Open Settings") {
+                                if let url = URL(string: UIApplication.openSettingsURLString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(AppColors.navy)
+                        }
                     }
                     .padding(.vertical, AppSpacing.xs)
                 } footer: {
-                    if authorizationStatus == .denied {
-                        Text("Notifications are disabled. Open Settings to enable them.")
-                            .foregroundStyle(AppColors.coral)
-                    } else if isEnabled {
-                        Text("You'll receive reminders for check-ins and updates.")
+                    if notifService.authorizationStatus == .denied {
+                        Text("Notifications are blocked. Open Settings → Notifications to re-enable.")
+                            .foregroundStyle(AppColors.error)
+                    } else if notifService.isAuthorized {
+                        Text("Toggle individual reminders below. Permission was already granted.")
                     } else {
-                        Text("Enable notifications to get reminders for post-workout check-ins.")
+                        Text("You'll be asked for permission when you enable your first reminder.")
                     }
                 }
 
-                // Actions Section
-                if !isEnabled {
-                    Section {
-                        if authorizationStatus == .notDetermined {
-                            Button {
-                                requestNotificationPermission()
-                            } label: {
-                                HStack {
-                                    Text(isRequesting ? "Requesting..." : "Enable Notifications")
-                                        .foregroundStyle(AppColors.navy)
-                                    Spacer()
-                                    if isRequesting {
-                                        ProgressView()
-                                            .scaleEffect(0.8)
-                                    }
-                                }
-                            }
-                            .disabled(isRequesting)
-                        }
-
-                        if authorizationStatus == .denied {
-                            Button("Open Settings") {
-                                openNotificationSettings()
-                            }
-                        }
-                    }
-                }
-
-                // Reminder Preferences Section
+                // Reminder Preferences — all functional
                 Section {
-                    Toggle(isOn: $postWorkoutReminder) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Post-Workout Check-in")
-                            Text("Reminder to log how you felt")
-                                .font(AppTypography.caption)
-                                .foregroundStyle(AppColors.textTertiary)
-                        }
+                    ReminderToggleRow(
+                        title: "Workout Reminder",
+                        subtitle: "Daily nudge at 5:00 PM",
+                        icon: "figure.run",
+                        color: AppColors.burntOrange,
+                        isOn: $workoutReminder
+                    ) { enabled in
+                        Task { await notifService.setReminder(.workout, enabled: enabled) }
                     }
 
-                    Toggle(isOn: $morningCheckIn) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Morning Recovery")
-                            Text("Next-day recovery check-in")
-                                .font(AppTypography.caption)
-                                .foregroundStyle(AppColors.textTertiary)
-                        }
+                    ReminderToggleRow(
+                        title: "Hydration Reminder",
+                        subtitle: "Daily nudge at 12:00 PM",
+                        icon: "drop.fill",
+                        color: AppColors.waterAccent,
+                        isOn: $hydrationReminder
+                    ) { enabled in
+                        Task { await notifService.setReminder(.hydration, enabled: enabled) }
                     }
 
-                    Toggle(isOn: $weeklyReport) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Weekly Summary")
-                            Text("Your training overview")
-                                .font(AppTypography.caption)
-                                .foregroundStyle(AppColors.textTertiary)
-                        }
+                    ReminderToggleRow(
+                        title: "Sleep Reminder",
+                        subtitle: "Wind-down nudge at 9:00 PM",
+                        icon: "moon.zzz.fill",
+                        color: AppColors.navy,
+                        isOn: $sleepReminder
+                    ) { enabled in
+                        Task { await notifService.setReminder(.sleep, enabled: enabled) }
+                    }
+
+                    ReminderToggleRow(
+                        title: "Nutrition Reminder",
+                        subtitle: "Log macros nudge at 1:00 PM",
+                        icon: "fork.knife",
+                        color: AppColors.olive,
+                        isOn: $nutritionReminder
+                    ) { enabled in
+                        Task { await notifService.setReminder(.nutrition, enabled: enabled) }
                     }
                 } header: {
-                    Text("Reminder Preferences")
+                    Text("Daily Reminders")
                 } footer: {
-                    Text("Push notification scheduling is coming in a future update. These preferences will be applied when available.")
+                    Text("Notification times are fixed for now. Custom scheduling will be available in a future update.")
                         .foregroundStyle(AppColors.textTertiary)
                 }
-                .disabled(true)
             }
             .navigationTitle("Notifications")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
+                    Button("Done") { dismiss() }
                 }
             }
-            .onAppear {
-                checkNotificationStatus()
+            .task {
+                await notifService.refreshStatus()
             }
         }
     }
+}
 
-    private func checkNotificationStatus() {
-        UNUserNotificationCenter.current().getNotificationSettings { settings in
-            DispatchQueue.main.async {
-                authorizationStatus = settings.authorizationStatus
+private struct ReminderToggleRow: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let color: Color
+    @Binding var isOn: Bool
+    let onChange: (Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: AppSpacing.md) {
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.12))
+                    .frame(width: 36, height: 36)
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(color)
             }
-        }
-    }
 
-    private func requestNotificationPermission() {
-        isRequesting = true
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in
-            DispatchQueue.main.async {
-                checkNotificationStatus()
-                isRequesting = false
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(AppTypography.cardTitle)
+                Text(subtitle)
+                    .font(AppTypography.caption)
+                    .foregroundStyle(AppColors.textTertiary)
             }
-        }
-    }
 
-    private func openNotificationSettings() {
-        if let url = URL(string: UIApplication.openSettingsURLString) {
-            UIApplication.shared.open(url)
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { isOn },
+                set: { newVal in
+                    isOn = newVal
+                    onChange(newVal)
+                }
+            ))
+            .labelsHidden()
         }
+        .padding(.vertical, 2)
     }
 }
 
@@ -782,9 +790,15 @@ struct GoalSettingsView: View {
                 }
             }
             .onAppear {
+                #if DEBUG
+                print("⚙️ [TRACE 12] GoalSettingsView.onAppear — loading goal=\(goalService.primaryGoal.map { $0.rawValue } ?? "nil")")
+                #endif
                 selectedGoal = goalService.primaryGoal
             }
         }
+        // The app's design system uses hardcoded light-mode colors throughout.
+        // Forcing light appearance here keeps goal cards readable in dark mode.
+        .preferredColorScheme(.light)
     }
 
     private func goalColor(for goal: UserGoal) -> Color {
@@ -1103,6 +1117,55 @@ struct AboutWellPatternView: View {
             }
             .sheet(isPresented: $showTerms) {
                 TermsOfServiceView()
+            }
+        }
+    }
+}
+
+// MARK: - Email Preferences
+
+struct EmailPreferencesView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @AppStorage("email_weekly_summary") private var weeklySummary = true
+    @AppStorage("email_product_updates") private var productUpdates = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Toggle(isOn: $weeklySummary) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Weekly Summary")
+                                .font(AppTypography.cardTitle)
+                            Text("A brief digest of your week's training and recovery")
+                                .font(AppTypography.caption)
+                                .foregroundStyle(AppColors.textTertiary)
+                        }
+                    }
+
+                    Toggle(isOn: $productUpdates) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Product Updates")
+                                .font(AppTypography.cardTitle)
+                            Text("New features, tips, and improvements")
+                                .font(AppTypography.caption)
+                                .foregroundStyle(AppColors.textTertiary)
+                        }
+                    }
+                } header: {
+                    Text("Email Notifications")
+                } footer: {
+                    Text("Transactional emails (password resets, account security) are always sent and cannot be disabled.")
+                        .foregroundStyle(AppColors.textTertiary)
+                }
+            }
+            .navigationTitle("Email Preferences")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
             }
         }
     }

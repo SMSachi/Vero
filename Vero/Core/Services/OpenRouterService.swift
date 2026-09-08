@@ -127,11 +127,15 @@ final class OpenRouterService: ObservableObject {
         // Build a structured prompt with ONLY the necessary data
         // Never send raw HealthKit data or unnecessary user information
 
+        let goalName = UserGoalService.shared.primaryGoal?.rawValue ?? "general fitness"
+
         var prompt = """
         You are a friendly fitness coach helping someone understand their workout. \
         Rewrite the following workout analysis into natural, encouraging language. \
         Keep it concise (2-3 sentences for summary, 3-4 for interpretation). \
-        Be warm and supportive, but factual.
+        Be warm and supportive, but factual. Tailor advice to their goal.
+
+        USER GOAL: \(goalName)
 
         WORKOUT DATA:
         - Type: \(output.metrics.workoutType)
@@ -179,6 +183,12 @@ final class OpenRouterService: ObservableObject {
             if let protein = nutrition.proteinGrams {
                 prompt += "\n- Protein: \(protein)g"
             }
+        }
+
+        // Add cycle phase if available (cautious, supportive framing)
+        if let cyclePhase = output.recoveryContext?.cyclePhase {
+            prompt += "\n\nCYCLE CONTEXT (use gently, only if relevant):"
+            prompt += "\n- User is in their \(cyclePhase.aiContext)"
         }
 
         // Add data completeness note
@@ -522,6 +532,73 @@ extension OpenRouterService {
 
         let timeText = hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes) minutes"
         return "You completed \(workoutCount) workout\(workoutCount == 1 ? "" : "s") totaling \(timeText) this \(period == "weekly" ? "week" : "month"). Keep up the consistent effort!"
+    }
+}
+
+// MARK: - Daily Guidance (Plus Feature)
+
+extension OpenRouterService {
+
+    /// Generate a short, personalised daily tip based on today's context.
+    /// Requires Plus tier or higher. Returns nil for free users.
+    /// Cached per calendar day so it's only fetched once.
+    func generateDailyGuidance(context: DailyContext) async -> String? {
+        guard PremiumManager.shared.canAccessWeeklyAI() else { return nil }
+
+        let cacheKey = "daily_guidance_\(dailyKey())"
+        if let cached = cache[cacheKey], !cached.isExpired {
+            return cached.enhancement.enhancedSummary
+        }
+
+        let goalName = UserGoalService.shared.primaryGoal?.rawValue ?? "general fitness"
+
+        var prompt = """
+        You are a concise wellness coach. Write ONE encouraging, practical tip for today \
+        (1-2 sentences max). Be specific to the person's data. No fluff, no filler.
+
+        USER GOAL: \(goalName)
+        SLEEP LAST NIGHT: \(String(format: "%.1f", context.sleepHours)) hours (\(context.sleepQuality.rawValue))
+        ENERGY TODAY: \(context.energyLevel.rawValue)
+        STRESS TODAY: \(context.stressLevel.rawValue)
+        """
+
+        if let hrv = context.hrvScore {
+            prompt += "\nHRV: \(String(format: "%.0f", hrv)) ms"
+        }
+        if let water = context.waterIntakeMl {
+            prompt += "\nWater logged: \(String(format: "%.1f", Double(water) / 1000.0))L"
+        }
+        if let cal = context.calories {
+            prompt += "\nCalories logged: \(cal) kcal"
+        }
+        if let phase = context.cyclePhase {
+            prompt += "\nCycle phase: \(phase.aiContext)"
+        }
+
+        prompt += "\n\nRespond with ONLY the 1-2 sentence tip, nothing else."
+
+        do {
+            let tip = try await callOpenRouter(prompt: prompt)
+            let cleaned = tip.trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            let enhancement = EnhancedAnalysis(
+                enhancedSummary: cleaned,
+                enhancedInterpretation: "",
+                enhancedRecommendation: nil,
+                source: .ai
+            )
+            cache[cacheKey] = CachedEnhancement(enhancement: enhancement, timestamp: Date())
+            saveCache()
+            return cleaned
+        } catch {
+            return nil
+        }
+    }
+
+    private func dailyKey() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
     }
 }
 

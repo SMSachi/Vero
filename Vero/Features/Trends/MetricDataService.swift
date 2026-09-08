@@ -290,6 +290,119 @@ final class MetricDataService {
         )
     }
 
+    // MARK: - HRV Data
+
+    func fetchHRVData(days: Int) -> MetricDetailData {
+        print("📊 MetricDataService: Fetching HRV data for \(days) days")
+
+        let contexts = fetchContexts(days: days)
+        let hrvEntries = contexts.compactMap { ctx -> (date: Date, value: Double)? in
+            guard let hrv = ctx.hrvScore, hrv > 0 else { return nil }
+            return (ctx.date, hrv)
+        }.sorted { $0.date < $1.date }
+
+        guard !hrvEntries.isEmpty else {
+            print("📊 MetricDataService: No HRV data found")
+            return MetricDetailData.empty(for: .hrv)
+        }
+
+        let values = hrvEntries.map { $0.value }
+        let average = values.reduce(0, +) / Double(values.count)
+        let latest = hrvEntries.last?.value ?? 0
+        let change = calculateChange(values: values)
+        // Higher HRV is better
+        let isPositive = change >= 0
+
+        // Normalize (typical HRV range 20-120 ms)
+        let maxVal = values.max() ?? 100
+        let minVal = max(0, (values.min() ?? 0) - 5)
+        let range = max(maxVal - minVal, 1)
+        let chartData = values.map { CGFloat(($0 - minVal) / range).clamped(to: 0...1) }
+
+        let insight: String
+        if average >= 80 {
+            insight = "Excellent HRV at \(Int(average)) ms. High variability indicates strong autonomic recovery capacity."
+        } else if average >= 60 {
+            insight = "Good HRV at \(Int(average)) ms. Your nervous system is recovering well between sessions."
+        } else if average >= 40 {
+            insight = "Moderate HRV at \(Int(average)) ms. Prioritize sleep and stress management to improve recovery."
+        } else {
+            insight = "Low HRV at \(Int(average)) ms. Consider reducing training load and focusing on sleep quality."
+        }
+
+        print("📊 MetricDataService: HRV - avg=\(Int(average))ms, entries=\(hrvEntries.count)")
+
+        return MetricDetailData(
+            metricType: .hrv,
+            currentValue: "\(Int(latest)) ms",
+            averageValue: "\(Int(average)) ms",
+            change: change,
+            changeLabel: change >= 0 ? "+\(String(format: "%.0f", abs(change)))%" : "\(String(format: "%.0f", change))%",
+            isPositiveChange: isPositive,
+            chartData: chartData,
+            chartLabels: generateDateLabels(for: hrvEntries.map { $0.date }),
+            percentOfGoal: nil,
+            goalLabel: nil,
+            insight: insight,
+            entryCount: hrvEntries.count,
+            dateRange: dateRangeLabel(days: days)
+        )
+    }
+
+    // MARK: - Nutrition Data
+
+    func fetchNutritionData(days: Int) -> MetricDetailData {
+        print("📊 MetricDataService: Fetching nutrition data for \(days) days")
+
+        let contexts = fetchContexts(days: days)
+        let nutritionEntries = contexts.compactMap { ctx -> (date: Date, calories: Int)? in
+            guard let cal = ctx.calories, cal > 0 else { return nil }
+            return (ctx.date, cal)
+        }.sorted { $0.date < $1.date }
+
+        guard !nutritionEntries.isEmpty else {
+            print("📊 MetricDataService: No nutrition data found")
+            return MetricDetailData.empty(for: .nutrition)
+        }
+
+        let calValues = nutritionEntries.map { Double($0.calories) }
+        let avgCal = calValues.reduce(0, +) / Double(calValues.count)
+        let latestCal = Double(nutritionEntries.last?.calories ?? 0)
+        let goalCal = 2000.0
+        let percentOfGoal = (avgCal / goalCal) * 100
+        let change = calculateChange(values: calValues)
+
+        let maxVal = calValues.max() ?? 1
+        let chartData = calValues.map { CGFloat($0 / maxVal) }
+
+        let insight: String
+        if avgCal < 1200 {
+            insight = "Calorie intake at \(Int(avgCal)) kcal/day is very low. Ensure adequate energy for training and recovery."
+        } else if avgCal <= 2200 {
+            insight = "Calorie intake of \(Int(avgCal)) kcal/day looks appropriate. Keep tracking consistently for best results."
+        } else {
+            insight = "Averaging \(Int(avgCal)) kcal/day. Review intake against your weight loss goals and activity level."
+        }
+
+        print("📊 MetricDataService: Nutrition - avgCal=\(Int(avgCal)), entries=\(nutritionEntries.count)")
+
+        return MetricDetailData(
+            metricType: .nutrition,
+            currentValue: "\(Int(latestCal)) kcal",
+            averageValue: "\(Int(avgCal)) kcal",
+            change: change,
+            changeLabel: change >= 0 ? "+\(String(format: "%.0f", abs(change)))%" : "\(String(format: "%.0f", change))%",
+            isPositiveChange: change <= 0,
+            chartData: chartData,
+            chartLabels: generateDateLabels(for: nutritionEntries.map { $0.date }),
+            percentOfGoal: min(percentOfGoal, 100),
+            goalLabel: "Goal: ~\(Int(goalCal)) kcal",
+            insight: insight,
+            entryCount: nutritionEntries.count,
+            dateRange: dateRangeLabel(days: days)
+        )
+    }
+
     // MARK: - Workouts Data
 
     func fetchWorkoutsData(days: Int) -> MetricDetailData {
@@ -450,7 +563,11 @@ struct MetricDetailData {
         case .weight:
             emptyInsight = "Track your weight regularly to monitor progress."
         case .heartRate:
-            emptyInsight = "Connect a heart rate monitor to track cardiovascular health."
+            emptyInsight = "Connect a heart rate monitor or log resting HR to track cardiovascular health."
+        case .hrv:
+            emptyInsight = "HRV data appears here once your device or HealthKit logs heart rate variability readings."
+        case .nutrition:
+            emptyInsight = "Log your daily calories and macros to track nutrition trends here."
         case .workouts:
             emptyInsight = "Complete workouts to see your activity trends here."
         }

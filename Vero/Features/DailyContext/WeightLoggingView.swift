@@ -18,6 +18,7 @@ struct WeightLoggingView: View {
 
     // State - display value in current unit system
     @State private var displayWeight: Double = 70.0
+    @State private var weightText: String = ""
     @State private var isSaving = false
     @State private var showSuccess = false
 
@@ -56,8 +57,8 @@ struct WeightLoggingView: View {
 
                     Spacer()
 
-                    // Slider
-                    sliderSection
+                    // Numeric entry
+                    numericEntrySection
                         .padding(.horizontal, 24)
 
                     Spacer()
@@ -84,7 +85,13 @@ struct WeightLoggingView: View {
             }
         }
         .onAppear {
+            #if DEBUG
+            print("⚖️ [TRACE 11] WeightLoggingView.onAppear START")
+            #endif
             loadExistingWeight()
+            #if DEBUG
+            print("⚖️ [TRACE 11] WeightLoggingView.onAppear END — displayWeight=\(displayWeight) weightText=\(weightText)")
+            #endif
         }
     }
 
@@ -110,7 +117,7 @@ struct WeightLoggingView: View {
                 ? String(format: "%.1f lb", weightKg * UnitPreferences.kgToLb)
                 : String(format: "%.1f kg", weightKg))
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(AppColors.textTertiary)
+                .foregroundStyle(AppColors.textSecondary)
         }
     }
 
@@ -150,47 +157,70 @@ struct WeightLoggingView: View {
 
     private func switchToMetric() {
         guard units.isImperial else { return }
-        // Convert current display value to kg before switching
         let kg = units.weightToKg(displayWeight)
         withAnimation(.spring(response: 0.3)) {
             units.setUnitSystem(.metric)
-            displayWeight = kg  // Now in kg
+            displayWeight = kg
+            weightText = String(format: "%.1f", kg)
         }
     }
 
     private func switchToImperial() {
         guard units.isMetric else { return }
-        // Convert current display value to lb before switching
-        let kg = displayWeight  // Currently in kg
+        let kg = displayWeight
         withAnimation(.spring(response: 0.3)) {
             units.setUnitSystem(.imperial)
-            displayWeight = kg * UnitPreferences.kgToLb  // Now in lb
+            displayWeight = kg * UnitPreferences.kgToLb
+            weightText = String(format: "%.1f", kg * UnitPreferences.kgToLb)
         }
     }
 
-    // MARK: - Slider Section
+    // MARK: - Numeric Entry Section
 
-    private var sliderSection: some View {
+    private var numericEntrySection: some View {
         VStack(spacing: 12) {
-            Slider(
-                value: $displayWeight,
-                in: units.weightSliderRange,
-                step: units.weightSliderStep
-            )
-            .tint(AppColors.navy)
+            Text("ENTER WEIGHT")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1)
+                .foregroundStyle(AppColors.textTertiary)
 
-            HStack {
-                Text(String(format: "%.0f %@", units.weightSliderRange.lowerBound, units.weightUnit))
-                Spacer()
-                Text(String(format: "%.0f %@", units.weightSliderRange.upperBound, units.weightUnit))
+            HStack(spacing: 0) {
+                TextField("0.0", text: $weightText)
+                    .keyboardType(.decimalPad)
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppColors.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .onChange(of: weightText) { _, newValue in
+                        #if DEBUG
+                        print("⚖️ [TRACE 11] onChange(weightText) fired — newValue='\(newValue)'")
+                        #endif
+                        let filtered = newValue.filter { $0.isNumber || $0 == "." }
+                        if filtered != newValue { weightText = filtered }
+                        if let parsed = Double(filtered) {
+                            let clamped = max(units.weightSliderRange.lowerBound,
+                                             min(units.weightSliderRange.upperBound, parsed))
+                            displayWeight = clamped
+                        }
+                        #if DEBUG
+                        print("⚖️ [TRACE 11] onChange(weightText) done — displayWeight=\(displayWeight)")
+                        #endif
+                    }
+
+                Text(units.weightUnit)
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(AppColors.textSecondary)
+                    .padding(.leading, 6)
             }
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(AppColors.textTertiary)
+            .padding(.vertical, 16)
+            .padding(.horizontal, 20)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AppColors.navy.opacity(0.2), lineWidth: 1.5)
+            )
+            .shadow(color: .black.opacity(0.05), radius: 10, y: 3)
         }
-        .padding(16)
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.05), radius: 10, y: 3)
     }
 
     // MARK: - Quick Adjust
@@ -217,11 +247,17 @@ struct WeightLoggingView: View {
 
     private func adjustButton(_ label: String, delta: Double) -> some View {
         Button {
+            #if DEBUG
+            print("⚖️ [TRACE 11] adjustButton '\(label)' tapped — displayWeight before=\(displayWeight) weightText=\(weightText)")
+            #endif
             withAnimation(.spring(response: 0.3)) {
                 let newValue = displayWeight + delta
                 displayWeight = max(units.weightSliderRange.lowerBound,
                                    min(units.weightSliderRange.upperBound, newValue))
             }
+            #if DEBUG
+            print("⚖️ [TRACE 11] adjustButton after — displayWeight=\(displayWeight) (note: weightText NOT synced by adjustButton)")
+            #endif
         } label: {
             Text(label)
                 .font(.system(size: 14, weight: .semibold))
@@ -259,22 +295,37 @@ struct WeightLoggingView: View {
     // MARK: - Actions
 
     private func loadExistingWeight() {
+        #if DEBUG
+        print("⚖️ [TRACE 11] loadExistingWeight() START — unit=\(units.weightUnit)")
+        #endif
         var loadedKg: Double?
 
         if let context = persistenceService.fetchTodayDailyContext(),
            let weight = context.weightKg, weight > 0 {
             loadedKg = weight
+            #if DEBUG
+            print("⚖️ [TRACE 11] loadExistingWeight() — found today's weight: \(weight)kg")
+            #endif
         } else if let lastWeight = persistenceService.fetchLastRecordedWeight() {
             loadedKg = lastWeight
+            #if DEBUG
+            print("⚖️ [TRACE 11] loadExistingWeight() — using last recorded: \(lastWeight)kg")
+            #endif
+        } else {
+            #if DEBUG
+            print("⚖️ [TRACE 11] loadExistingWeight() — no weight on record, using default")
+            #endif
         }
 
         if let kg = loadedKg {
-            // Convert to display units
             displayWeight = units.displayWeight(kg)
         } else {
-            // Default based on unit system
             displayWeight = units.isMetric ? 70.0 : 154.0
         }
+        weightText = String(format: "%.1f", displayWeight)
+        #if DEBUG
+        print("⚖️ [TRACE 11] loadExistingWeight() END — displayWeight=\(displayWeight) \(units.weightUnit) weightText=\(weightText)")
+        #endif
     }
 
     private func save() {

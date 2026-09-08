@@ -23,6 +23,7 @@ struct ProfileView: View {
     @State private var showHealthDataSettings = false
     @State private var showWatchSettings = false
     @State private var showPreferences = false
+    @State private var showEmailPreferences = false
     @State private var showPaywall = false
     @State private var showAccountDeletion = false
     @State private var showGoalSettings = false
@@ -102,7 +103,8 @@ struct ProfileView: View {
                         showNotificationSettings: $showNotificationSettings,
                         showHealthDataSettings: $showHealthDataSettings,
                         showWatchSettings: $showWatchSettings,
-                        showPreferences: $showPreferences
+                        showPreferences: $showPreferences,
+                        showEmailPreferences: $showEmailPreferences
                     )
                         .opacity(contentVisible ? 1 : 0)
 
@@ -149,6 +151,9 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showPreferences) {
             PreferencesView()
+        }
+        .sheet(isPresented: $showEmailPreferences) {
+            EmailPreferencesView()
         }
         .sheet(isPresented: $showPaywall) {
             PaywallView()
@@ -810,6 +815,7 @@ struct SettingsSection: View {
     @Binding var showHealthDataSettings: Bool
     @Binding var showWatchSettings: Bool
     @Binding var showPreferences: Bool
+    @Binding var showEmailPreferences: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
@@ -821,6 +827,10 @@ struct SettingsSection: View {
             VStack(spacing: 0) {
                 SettingsRowItem(icon: "bell.fill", title: "Notifications", color: .red) {
                     showNotificationSettings = true
+                }
+                Divider().padding(.leading, 56)
+                SettingsRowItem(icon: "envelope.fill", title: "Email Preferences", color: AppColors.navy) {
+                    showEmailPreferences = true
                 }
                 Divider().padding(.leading, 56)
                 SettingsRowItem(icon: "heart.fill", title: "Health Data", color: .pink) {

@@ -22,14 +22,16 @@ struct HomeDashboardView: View {
 
     @StateObject private var viewModel = HomeViewModel()
     @StateObject private var goalService = UserGoalService.shared
-    @StateObject private var healthKitService = HealthKitService.shared
 
     @State private var navigateToWorkoutInsight = false
+    @State private var navigateToTrendMetric: TrendMetricType? = nil
     @State private var showAddWorkout = false
     @State private var showDailyLog = false
     @State private var showWaterLog = false
     @State private var showSleepLog = false
     @State private var showWeightLog = false
+    @State private var showNutritionLog = false
+    @State private var showCycleLog = false
     @State private var animateProgress = false
 
     private var displayName: String {
@@ -136,13 +138,49 @@ struct HomeDashboardView: View {
                                 ReadinessCard(
                                     hrv: viewModel.dailyContext?.hrvScore,
                                     sleepHours: viewModel.dailyContext?.sleepHours,
-                                    onTap: { showDailyLog = true }
+                                    onTap: {
+                                        // Navigate to HRV detail if available, sleep otherwise
+                                        let metric: TrendMetricType = viewModel.dailyContext?.hrvScore != nil
+                                            ? .hrv
+                                            : .sleep
+                                        #if DEBUG
+                                        print("🏠 [TRACE 9] ReadinessCard tapped — navigateToTrendMetric = \(metric)")
+                                        #endif
+                                        navigateToTrendMetric = metric
+                                    }
                                 )
                             }
                         }
                         .frame(height: 88)
+
+                        // Row 3: Nutrition (Weight Loss only)
+                        if goalService.shouldShowWeightUI {
+                            NutritionCard(
+                                calories: viewModel.dailyContext?.calories,
+                                protein: viewModel.dailyContext?.proteinGrams,
+                                carbs: viewModel.dailyContext?.carbsGrams,
+                                fat: viewModel.dailyContext?.fatGrams,
+                                onTap: { showNutritionLog = true }
+                            )
+                            .frame(height: 88)
+                        }
+
+                        // Row 4: Cycle tracking (all users, optional)
+                        CycleCard(
+                            phase: viewModel.dailyContext?.cyclePhase,
+                            onTap: { showCycleLog = true }
+                        )
+                        .frame(height: 64)
                     }
                     .padding(.horizontal, 20)
+
+                    // ═══════════════════════════════════════════════════
+                    // DAILY GUIDANCE (Plus/Pro only, shown when available)
+                    // ═══════════════════════════════════════════════════
+                    if let tip = viewModel.dailyGuidance {
+                        DailyGuidanceCard(tip: tip)
+                            .padding(.horizontal, 20)
+                    }
 
                     // ═══════════════════════════════════════════════════
                     // PART 6: WEEKLY TRACKER (Upgraded)
@@ -178,20 +216,32 @@ struct HomeDashboardView: View {
                     )
                 }
             }
+            .navigationDestination(item: $navigateToTrendMetric) { metric in
+                MetricDetailView(metricType: metric, trends: [])
+            }
         }
         .background(AppColors.background.ignoresSafeArea(.all))
         .task {
+            #if DEBUG
+            print("🏠 [TRACE 2] HomeDashboardView.task START — about to call loadData()")
+            #endif
             await viewModel.loadData()
+            #if DEBUG
+            print("🏠 [TRACE 2] HomeDashboardView.task END — loadData() returned")
+            #endif
         }
         .onAppear {
             #if DEBUG
-            print("🏠 HomeDashboardView: APPEARED — first interactive frame")
+            print("🏠 [TRACE 3] HomeDashboardView.onAppear START")
             #endif
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 withAnimation(.easeOut(duration: 0.8)) {
                     animateProgress = true
                 }
             }
+            #if DEBUG
+            print("🏠 [TRACE 3] HomeDashboardView.onAppear END")
+            #endif
         }
         .sheet(isPresented: $showAddWorkout) {
             AddWorkoutView(onSave: { _ in
@@ -218,11 +268,22 @@ struct HomeDashboardView: View {
                 viewModel.refreshAnalytics()
             })
         }
+        .sheet(isPresented: $showNutritionLog) {
+            NutritionLoggingView(onSave: {
+                viewModel.refreshAnalytics()
+            })
+        }
+        .sheet(isPresented: $showCycleLog) {
+            CycleLoggingView(onSave: {
+                viewModel.refreshAnalytics()
+            })
+        }
         .onChange(of: scenePhase) { oldPhase, newPhase in
             if newPhase == .active && oldPhase == .inactive {
                 Task {
-                    await healthKitService.refreshAuthorizationStatus()
-                    if healthKitService.authorizationStatus == .authorized {
+                    let hk = HealthKitService.shared
+                    await hk.refreshAuthorizationStatus()
+                    if hk.authorizationStatus == .authorized {
                         await viewModel.loadData()
                     }
                 }
@@ -621,7 +682,7 @@ private struct WeightCard: View {
 
     private var trendColor: Color {
         guard let delta = weeklyDelta else { return AppColors.textTertiary }
-        return delta <= 0 ? AppColors.olive : AppColors.coral
+        return delta <= 0 ? AppColors.olive : AppColors.error
     }
 
     var body: some View {
@@ -671,6 +732,76 @@ private struct WeightCard: View {
             .background(Color.white)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+        }
+        .buttonStyle(BoldCardButtonStyle())
+    }
+}
+
+private struct NutritionCard: View {
+    let calories: Int?
+    let protein: Int?
+    let carbs: Int?
+    let fat: Int?
+    let onTap: () -> Void
+
+    private var hasData: Bool { calories != nil || protein != nil }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(AppColors.burntOrange.opacity(0.12))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "fork.knife")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(AppColors.burntOrange)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("NUTRITION")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.5)
+                        .foregroundStyle(AppColors.textTertiary)
+
+                    if let cal = calories {
+                        HStack(alignment: .lastTextBaseline, spacing: 2) {
+                            Text("\(cal)")
+                                .font(.system(size: 20, weight: .bold, design: .rounded))
+                                .foregroundStyle(AppColors.textPrimary)
+                            Text("kcal")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+                    } else {
+                        Text("Tap to log")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
+
+                    if protein != nil || carbs != nil || fat != nil {
+                        HStack(spacing: 6) {
+                            if let p = protein { Text("P:\(p)g").foregroundStyle(AppColors.olive) }
+                            if let c = carbs { Text("C:\(c)g").foregroundStyle(AppColors.waterAccent) }
+                            if let f = fat { Text("F:\(f)g").foregroundStyle(AppColors.burntOrange) }
+                        }
+                        .font(.system(size: 10, weight: .semibold))
+                    }
+                }
+                .layoutPriority(1)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AppColors.textTertiary.opacity(0.5))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
         }
         .buttonStyle(BoldCardButtonStyle())
     }
@@ -756,6 +887,91 @@ private struct ReadinessCard: View {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// MARK: - DAILY GUIDANCE CARD (Plus/Pro)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+private struct DailyGuidanceCard: View {
+    let tip: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(AppColors.olive)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("TODAY'S INSIGHT")
+                    .font(.system(size: 9, weight: .bold))
+                    .tracking(0.5)
+                    .foregroundStyle(AppColors.textTertiary)
+
+                Text(tip)
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(AppColors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppColors.olive.opacity(0.06))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(AppColors.olive.opacity(0.2), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MARK: - CYCLE CARD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+private struct CycleCard: View {
+    let phase: CyclePhase?
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(AppColors.olive.opacity(0.10))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: phase?.icon ?? "circle.grid.2x2.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppColors.olive)
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("CYCLE")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.5)
+                        .foregroundStyle(AppColors.textTertiary)
+
+                    Text(phase?.rawValue ?? "Log phase")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(phase != nil ? AppColors.textPrimary : AppColors.textSecondary)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AppColors.textTertiary.opacity(0.5))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: .black.opacity(0.05), radius: 8, y: 2)
+        }
+        .buttonStyle(BoldCardButtonStyle())
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MARK: - PART 4: ANIMATED PROGRESS BAR
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -815,7 +1031,7 @@ private struct MiniSparkline: View {
                 )
             }
             .stroke(
-                trend <= 0 ? AppColors.olive : AppColors.coral,
+                trend <= 0 ? AppColors.olive : AppColors.error,
                 style: StrokeStyle(lineWidth: 2, lineCap: .round)
             )
         }

@@ -84,6 +84,9 @@ final class HomeViewModel: ObservableObject {
     /// Used by WeeklyTracker to show actual workout days instead of a sequential fill.
     @Published private(set) var workoutDaysThisWeek: Set<Int> = []
 
+    /// AI-generated daily tip for Plus/Pro users. nil for free tier or when AI is unavailable.
+    @Published private(set) var dailyGuidance: String? = nil
+
     /// Whether a post-workout check-in has been completed for the latest workout
     var hasCompletedCheckIn: Bool {
         guard let workout = latestWorkout else { return false }
@@ -177,9 +180,15 @@ final class HomeViewModel: ObservableObject {
     /// Falls back to cached data when HealthKit is unavailable.
     /// Shows empty states when no data exists.
     func loadData() async {
+        guard !isLoading else { return }
 
         isLoading = true
         errorMessage = nil
+
+        #if DEBUG
+        let _loadStart = CFAbsoluteTimeGetCurrent()
+        print("🏠 [HOME] loadData() BEGIN — cached first, then HealthKit")
+        #endif
 
         // First, load cached data immediately (local-first)
         loadCachedData()
@@ -195,10 +204,18 @@ final class HomeViewModel: ObservableObject {
         healthKitService.checkAuthorizationStatus()
 
         guard healthKitService.authorizationStatus == .authorized else {
+            #if DEBUG
+            print("🏠 [HOME] loadData() — HealthKit not authorized (\(healthKitService.authorizationStatus.rawValue)), showing cached data")
+            #endif
             if hasRealData { generateInterpretation() }
             isLoading = false
             return
         }
+
+        #if DEBUG
+        print("🏠 [HOME] loadData() — HealthKit authorized, starting concurrent fetch")
+        let _hkStart = CFAbsoluteTimeGetCurrent()
+        #endif
 
         // Fetch all data concurrently from HealthKit
         async let workoutTask = fetchLatestWorkout()
@@ -207,8 +224,9 @@ final class HomeViewModel: ObservableObject {
         async let waterTask = fetchWaterIntake()
 
         let (workout, recent, context, water) = await (workoutTask, recentWorkoutsTask, contextTask, waterTask)
-
         #if DEBUG
+        let _hkElapsed = (CFAbsoluteTimeGetCurrent() - _hkStart) * 1000
+        print("🏠 [HOME] HealthKit concurrent fetch done: \(String(format: "%.0f", _hkElapsed)) ms | workout=\(workout != nil) recent=\(recent.count) context=\(context != nil) water=\(water != nil)")
         print("🏥 HK→HOME: ══════════ DATA LANDED IN APP STATE ══════════════")
         print("🏥 HK→HOME: latestWorkout   = \(workout.map { "\($0.type.rawValue) \(Int($0.duration / 60)) min" } ?? "nil")")
         print("🏥 HK→HOME: recentWorkouts  = \(recent.count) workouts")
@@ -267,12 +285,20 @@ final class HomeViewModel: ObservableObject {
             self.waterIntake = water
         }
 
-        // Calculate recovery based on available data (nil when readiness is unavailable)
+        // Calculate recovery based on available data (nil when readiness is unavailable).
+        // Only persist a new recovery if the workout doesn't already have one linked —
+        // saves once per workout per day, not on every loadData() call.
         if let context = dailyContext, let calculatedRecovery = calculateRecovery(from: context) {
             self.recovery = calculatedRecovery
 
             if let workout = latestWorkout {
-                persistenceService.saveNextDayRecovery(calculatedRecovery, for: workout.id)
+                let alreadyLinked = persistenceService.fetchPersistedWorkout(id: workout.id)?.nextDayRecovery != nil
+                #if DEBUG
+                print("📈 [RECOVERY] workout.nextDayRecovery alreadyLinked=\(alreadyLinked)")
+                #endif
+                if !alreadyLinked {
+                    persistenceService.saveNextDayRecovery(calculatedRecovery, for: workout.id)
+                }
             }
         }
 
@@ -288,9 +314,19 @@ final class HomeViewModel: ObservableObject {
             }
         }
 
+        // Generate Plus daily guidance (non-blocking — updates UI when done)
+        if let ctx = dailyContext {
+            Task { [weak self] in
+                let tip = await OpenRouterService.shared.generateDailyGuidance(context: ctx)
+                await MainActor.run { self?.dailyGuidance = tip }
+            }
+        }
+
         #if DEBUG
         MetricsEngine.shared.auditLog(screen: "Dashboard")
         Task { await HealthKitService.shared.printDiagnosticSummary() }
+        let _loadElapsed = (CFAbsoluteTimeGetCurrent() - _loadStart) * 1000
+        print("🏠 [HOME] loadData() COMPLETE: \(String(format: "%.0f", _loadElapsed)) ms total")
         #endif
         isLoading = false
     }
@@ -299,10 +335,16 @@ final class HomeViewModel: ObservableObject {
     /// Call this from WorkoutsListView after AddWorkoutView saves.
     /// Also called by DataBroadcaster when any metric is logged.
     func refreshAnalytics() {
+        #if DEBUG
+        print("🏠 [TRACE 2b] refreshAnalytics() called — caller: DataBroadcaster debounce or manual onSave")
+        #endif
         loadCachedData()
         if hasRealData {
             generateInterpretation()
         }
+        #if DEBUG
+        print("🏠 [TRACE 2b] refreshAnalytics() done")
+        #endif
     }
 
     /// Generate workout interpretation using the InterpretationEngine.

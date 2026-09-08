@@ -277,6 +277,7 @@ struct RecoveryContext: Codable, Equatable {
     let restingHeartRate: Int?
     let readinessScore: Int?
     let stressLevel: String?
+    let cyclePhase: CyclePhase?
 
     var hasData: Bool {
         sleepHours != nil || hrvScore != nil || readinessScore != nil
@@ -448,7 +449,8 @@ extension AnalysisOutput {
                 hrvScore: ctx.hrvScore,
                 restingHeartRate: ctx.restingHeartRate,
                 readinessScore: ctx.readinessScore,
-                stressLevel: ctx.stressLevel.rawValue
+                stressLevel: ctx.stressLevel.rawValue,
+                cyclePhase: ctx.cyclePhase
             )
         }
 
@@ -568,7 +570,8 @@ extension AnalysisOutput {
                 hrvScore: ctx.hrvScore,
                 restingHeartRate: ctx.restingHeartRate,
                 readinessScore: ctx.readinessScore,
-                stressLevel: ctx.stressLevel.rawValue
+                stressLevel: ctx.stressLevel.rawValue,
+                cyclePhase: ctx.cyclePhase
             )
         }
 

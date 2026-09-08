@@ -6,9 +6,9 @@
 //  Contains API keys, product identifiers, and tier limits.
 //
 //  TIERS:
-//  - FREE: 3-day trial, then workout logging only
-//  - PLUS ($4.99/mo): Weekly AI trends, 30-day history
-//  - PRO ($12.99/mo): Full per-workout AI, unlimited history
+//  - FREE: $0, workout logging + health data viewing, no AI
+//  - PLUS ($7/mo): Daily AI guidance, 30-day history
+//  - PRO ($15/mo): Deeper per-workout AI + follow-ups, unlimited history
 //
 //  SETUP:
 //  1. Replace OpenRouter API key with your key from https://openrouter.ai
@@ -65,23 +65,27 @@ enum WellPatternConfig {
     // MARK: - StoreKit Configuration
 
     enum StoreKit {
-        // MARK: Plus Tier ($4.99/month)
+        // MARK: Plus Tier ($7/month)
+        // App Store Connect: create product ID "com.sachishah.wellpattern.plus.monthly" priced at $6.99
+        // (App Store rounds to nearest tier: $6.99 is Tier 7)
 
         /// Product identifier for Plus monthly subscription
-        static let plusMonthlyProductID = "wellpattern_plus_monthly"
+        static let plusMonthlyProductID = "com.sachishah.wellpattern.plus.monthly"
 
-        // MARK: Pro Tier ($12.99/month)
+        // MARK: Pro Tier ($15/month)
+        // App Store Connect: create product ID "com.sachishah.wellpattern.pro.monthly" priced at $14.99
+        // (App Store rounds to nearest tier: $14.99 is Tier 15)
 
         /// Product identifier for Pro monthly subscription
-        static let proMonthlyProductID = "wellpattern_pro_monthly"
+        static let proMonthlyProductID = "com.sachishah.wellpattern.pro.monthly"
 
         // MARK: Pricing (for display, actual prices come from App Store)
 
         /// Plus monthly price (display only - App Store is source of truth)
-        static let plusMonthlyPrice: Decimal = 4.99
+        static let plusMonthlyPrice: Decimal = 6.99
 
         /// Pro monthly price (display only - App Store is source of truth)
-        static let proMonthlyPrice: Decimal = 12.99
+        static let proMonthlyPrice: Decimal = 14.99
 
         // MARK: Product Sets (LAUNCH: Monthly only — no yearly products)
 
@@ -171,7 +175,7 @@ enum WellPatternConfig {
         /// Terms of Service URL — TODO: replace with a SEPARATE WellPattern terms URL (must differ from privacy policy)
         static let termsOfServiceURL = URL(string: "https://pickle-wall-bb8.notion.site/Insio-Privacy-Policy-33d1ba29da8e80b1a00fc750457b6473")!
 
-        /// Support email — TODO: replace with WellPattern support address
+        /// Support email — TODO: replace with WellPattern support address before shipping
         static let supportEmail = "insiohealth@gmail.com"
 
         /// App Store URL — TODO: replace id0000000000 with real Apple ID after App Store Connect record is created

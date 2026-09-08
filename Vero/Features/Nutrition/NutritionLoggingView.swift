@@ -2,448 +2,229 @@
 //  NutritionLoggingView.swift
 //  WellPattern Health
 //
-//  Simple nutrition logging view for water and macros.
-//  Designed for quick, easy logging without complexity.
+//  Macro logging screen — calories, protein, carbs, fat.
+//  Saves directly to today's DailyContext via PersistenceService.
 //
 
 import SwiftUI
 
-// MARK: - Nutrition Logging View
-
 struct NutritionLoggingView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var nutritionService = NutritionService.shared
-    @StateObject private var premiumManager = PremiumManager.shared
 
-    @State private var waterIntake: Int = 0
+    var onSave: (() -> Void)?
+
     @State private var calories: String = ""
     @State private var protein: String = ""
     @State private var carbs: String = ""
     @State private var fat: String = ""
-    @State private var showingSaved = false
+    @State private var isSaving = false
+    @State private var showSuccess = false
+
+    private let persistenceService = PersistenceService.shared
+    private let syncService = SupabaseSyncService.shared
 
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: AppSpacing.xl) {
-                    // Water section
-                    WaterSection(
-                        waterIntake: $waterIntake,
-                        onQuickAdd: { amount in
-                            waterIntake += amount
-                        }
-                    )
+            ZStack {
+                LinearGradient(
+                    colors: [AppColors.navy.opacity(0.06), AppColors.background],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
 
-                    // Macros section
-                    MacrosSection(
-                        calories: $calories,
-                        protein: $protein,
-                        carbs: $carbs,
-                        fat: $fat
-                    )
-
-                    // Premium upsell if not Plus+
-                    if !premiumManager.isPlus {
-                        NutritionUpsellCard()
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 24) {
+                        calorieSection
+                        macrosSection
+                        Spacer().frame(height: 8)
+                        saveButton
                     }
-
-                    // Save button
-                    Button {
-                        saveNutrition()
-                    } label: {
-                        Text("Save")
-                            .font(AppTypography.buttonLarge)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, AppSpacing.md)
-                            .background(AppColors.navy)
-                            .foregroundStyle(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.radiusMedium, style: .continuous))
-                    }
-                    .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 24)
+                    .padding(.bottom, 40)
                 }
-                .padding(.top, AppSpacing.lg)
-                .padding(.bottom, AppSpacing.Layout.bottomScrollPadding)
             }
-            .background(AppColors.background)
             .navigationTitle("Log Nutrition")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .foregroundStyle(AppColors.textSecondary)
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(AppColors.navy)
                 }
             }
         }
-        .onAppear {
-            loadExistingData()
-        }
-        .alert("Saved!", isPresented: $showingSaved) {
-            Button("OK") { dismiss() }
-        } message: {
-            Text("Your nutrition data has been saved.")
-        }
+        .onAppear { loadExisting() }
     }
 
-    private func loadExistingData() {
-        if let entry = nutritionService.todayEntry {
-            waterIntake = entry.waterIntakeMl ?? 0
-            if let c = entry.calories { calories = String(c) }
-            if let p = entry.proteinGrams { protein = String(p) }
-            if let c = entry.carbsGrams { carbs = String(c) }
-            if let f = entry.fatGrams { fat = String(f) }
-        }
-    }
+    // MARK: - Calorie Section
 
-    private func saveNutrition() {
-        // Save water
-        if waterIntake > 0 {
-            nutritionService.setWaterIntake(waterIntake)
-        }
+    private var calorieSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Calories", systemImage: "flame.fill")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(AppColors.burntOrange)
 
-        // Save macros
-        let caloriesInt = Int(calories)
-        let proteinInt = Int(protein)
-        let carbsInt = Int(carbs)
-        let fatInt = Int(fat)
+            HStack {
+                TextField("0", text: $calories)
+                    .keyboardType(.numberPad)
+                    .font(.system(size: 48, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppColors.textPrimary)
+                    .onChange(of: calories) { _, v in
+                        calories = v.filter { $0.isNumber }
+                    }
 
-        if caloriesInt != nil || proteinInt != nil || carbsInt != nil || fatInt != nil {
-            nutritionService.logMacros(
-                calories: caloriesInt,
-                protein: proteinInt,
-                carbs: carbsInt,
-                fat: fatInt
+                Text("kcal")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(AppColors.textSecondary)
+            }
+            .padding(.vertical, 16)
+            .padding(.horizontal, 20)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AppColors.burntOrange.opacity(0.25), lineWidth: 1.5)
             )
+            .shadow(color: .black.opacity(0.05), radius: 10, y: 3)
         }
-
-        showingSaved = true
     }
-}
 
-// MARK: - Water Section
+    // MARK: - Macros Section
 
-private struct WaterSection: View {
-    @Binding var waterIntake: Int
-    let onQuickAdd: (Int) -> Void
+    private var macrosSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("MACROS")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1)
+                .foregroundStyle(AppColors.textSecondary)
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            // Header
-            HStack {
-                Image(systemName: "drop.fill")
-                    .foregroundStyle(AppColors.olive)
-
-                Text("Water Intake")
-                    .font(AppTypography.headlineSmall)
-                    .foregroundStyle(AppColors.textPrimary)
-
-                Spacer()
-
-                Text(formatWater(waterIntake))
-                    .font(AppTypography.headlineMedium)
-                    .foregroundStyle(AppColors.navy)
-            }
-
-            // Progress bar
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    // Background
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(AppColors.divider)
-                        .frame(height: 12)
-
-                    // Progress (2L goal)
-                    let progress = min(1.0, Double(waterIntake) / 2000.0)
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(AppColors.olive)
-                        .frame(width: geometry.size.width * progress, height: 12)
-                }
-            }
-            .frame(height: 12)
-
-            // Goal indicator
-            HStack {
-                Text("Goal: 2L")
-                    .font(AppTypography.caption)
-                    .foregroundStyle(AppColors.textTertiary)
-
-                Spacer()
-
-                Text(hydrationStatus)
-                    .font(AppTypography.caption)
-                    .foregroundStyle(statusColor)
-            }
-
-            // Quick add buttons
-            HStack(spacing: AppSpacing.sm) {
-                ForEach(WaterQuickAdd.allCases, id: \.rawValue) { amount in
-                    QuickAddButton(
-                        title: amount.displayName,
-                        subtitle: amount.displayAmount,
-                        icon: amount.icon
-                    ) {
-                        onQuickAdd(amount.rawValue)
-                    }
-                }
+            VStack(spacing: 12) {
+                macroField(label: "Protein", unit: "g", icon: "p.circle.fill", color: AppColors.olive, binding: $protein)
+                macroField(label: "Carbs", unit: "g", icon: "c.circle.fill", color: AppColors.waterAccent, binding: $carbs)
+                macroField(label: "Fat", unit: "g", icon: "f.circle.fill", color: AppColors.burntOrange, binding: $fat)
             }
         }
-        .padding(AppSpacing.Layout.cardPadding)
-        .background(AppColors.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.Layout.cardRadius, style: .continuous))
-        .standardShadow()
-        .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
     }
 
-    private func formatWater(_ ml: Int) -> String {
-        if ml >= 1000 {
-            return String(format: "%.1fL", Double(ml) / 1000.0)
-        }
-        return "\(ml)ml"
-    }
-
-    private var hydrationStatus: String {
-        switch waterIntake {
-        case 0..<1000: return "Keep drinking!"
-        case 1000..<2000: return "Good progress"
-        case 2000..<3000: return "Great!"
-        default: return "Excellent!"
-        }
-    }
-
-    private var statusColor: Color {
-        switch waterIntake {
-        case 0..<1000: return AppColors.orange
-        case 1000..<2000: return AppColors.textSecondary
-        default: return AppColors.olive
-        }
-    }
-}
-
-private struct QuickAddButton: View {
-    let title: String
-    let subtitle: String
-    let icon: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
+    private func macroField(label: String, unit: String, icon: String, color: Color, binding: Binding<String>) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.12))
+                    .frame(width: 36, height: 36)
                 Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .foregroundStyle(AppColors.olive)
-
-                Text(subtitle)
-                    .font(AppTypography.captionSmall)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(color)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, AppSpacing.sm)
-            .background(AppColors.oliveTint)
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.radiusSmall, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Macros Section
-
-private struct MacrosSection: View {
-    @Binding var calories: String
-    @Binding var protein: String
-    @Binding var carbs: String
-    @Binding var fat: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            // Header
-            HStack {
-                Image(systemName: "fork.knife")
-                    .foregroundStyle(AppColors.orange)
-
-                Text("Macros")
-                    .font(AppTypography.headlineSmall)
-                    .foregroundStyle(AppColors.textPrimary)
-
-                Spacer()
-
-                Text("Optional")
-                    .font(AppTypography.caption)
-                    .foregroundStyle(AppColors.textTertiary)
-            }
-
-            // Input fields
-            VStack(spacing: AppSpacing.sm) {
-                MacroInputRow(
-                    label: "Calories",
-                    unit: "kcal",
-                    value: $calories,
-                    icon: "flame.fill",
-                    color: AppColors.orange
-                )
-
-                MacroInputRow(
-                    label: "Protein",
-                    unit: "g",
-                    value: $protein,
-                    icon: "p.circle.fill",
-                    color: AppColors.navy
-                )
-
-                MacroInputRow(
-                    label: "Carbs",
-                    unit: "g",
-                    value: $carbs,
-                    icon: "c.circle.fill",
-                    color: AppColors.olive
-                )
-
-                MacroInputRow(
-                    label: "Fat",
-                    unit: "g",
-                    value: $fat,
-                    icon: "f.circle.fill",
-                    color: AppColors.textSecondary
-                )
-            }
-        }
-        .padding(AppSpacing.Layout.cardPadding)
-        .background(AppColors.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.Layout.cardRadius, style: .continuous))
-        .standardShadow()
-        .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
-    }
-}
-
-private struct MacroInputRow: View {
-    let label: String
-    let unit: String
-    @Binding var value: String
-    let icon: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: AppSpacing.md) {
-            Image(systemName: icon)
-                .font(.system(size: 18))
-                .foregroundStyle(color)
-                .frame(width: 24)
 
             Text(label)
-                .font(AppTypography.bodyMedium)
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(AppColors.textPrimary)
+                .frame(width: 60, alignment: .leading)
 
             Spacer()
 
-            HStack(spacing: AppSpacing.xs) {
-                TextField("0", text: $value)
-                    .font(AppTypography.bodyMedium)
+            HStack(spacing: 6) {
+                TextField("0", text: binding)
                     .keyboardType(.numberPad)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppColors.textPrimary)
                     .multilineTextAlignment(.trailing)
-                    .frame(width: 60)
+                    .frame(width: 70)
+                    .onChange(of: binding.wrappedValue) { _, v in
+                        binding.wrappedValue = v.filter { $0.isNumber }
+                    }
 
                 Text(unit)
-                    .font(AppTypography.bodySmall)
-                    .foregroundStyle(AppColors.textTertiary)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(AppColors.textSecondary)
             }
-            .padding(.horizontal, AppSpacing.sm)
-            .padding(.vertical, AppSpacing.xs)
-            .background(AppColors.background)
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.radiusSmall, style: .continuous))
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
     }
-}
 
-// MARK: - Nutrition Upsell Card
+    // MARK: - Save Button
 
-private struct NutritionUpsellCard: View {
-    @State private var showPaywall = false
-
-    var body: some View {
-        VStack(spacing: AppSpacing.md) {
+    private var saveButton: some View {
+        Button(action: save) {
             HStack {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 24))
-                    .foregroundStyle(AppColors.navy)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Unlock Nutrition Insights")
-                        .font(AppTypography.titleMedium)
-                        .foregroundStyle(AppColors.textPrimary)
-
-                    Text("See how nutrition affects your workouts")
-                        .font(AppTypography.caption)
-                        .foregroundStyle(AppColors.textSecondary)
+                if isSaving {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(0.9)
                 }
-
-                Spacer()
+                Text(isSaving ? "Saving..." : (showSuccess ? "Saved!" : "Save"))
+                    .font(.system(size: 17, weight: .bold))
             }
-
-            Button {
-                showPaywall = true
-            } label: {
-                Text("Upgrade to Plus")
-                    .font(AppTypography.buttonSmall)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, AppSpacing.lg)
-                    .padding(.vertical, AppSpacing.sm)
-                    .background(AppColors.olive)
-                    .clipShape(Capsule())
-            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(showSuccess ? AppColors.olive : AppColors.navy)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .shadow(color: AppColors.navy.opacity(0.3), radius: 10, y: 5)
         }
-        .padding(AppSpacing.Layout.cardPadding)
-        .background(AppColors.navyTint)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.Layout.cardRadius, style: .continuous))
-        .padding(.horizontal, AppSpacing.Layout.horizontalMargin)
-        .sheet(isPresented: $showPaywall) {
-            PaywallView()
+        .disabled(isSaving)
+    }
+
+    // MARK: - Logic
+
+    private func loadExisting() {
+        guard let ctx = persistenceService.fetchTodayDailyContext() else { return }
+        if let c = ctx.calories { calories = String(c) }
+        if let p = ctx.proteinGrams { protein = String(p) }
+        if let c = ctx.carbsGrams { carbs = String(c) }
+        if let f = ctx.fatGrams { fat = String(f) }
+    }
+
+    private func save() {
+        isSaving = true
+
+        var context: DailyContext
+        if let existing = persistenceService.fetchTodayDailyContext() {
+            context = existing
+        } else {
+            context = DailyContext(
+                id: UUID(),
+                date: Date(),
+                sleepHours: 7,
+                sleepQuality: .good,
+                stressLevel: .moderate,
+                energyLevel: .moderate,
+                restingHeartRate: nil,
+                hrvScore: nil,
+                readinessScore: nil
+            )
+        }
+
+        if let c = Int(calories) { context.calories = c }
+        if let p = Int(protein) { context.proteinGrams = p }
+        if let c = Int(carbs) { context.carbsGrams = c }
+        if let f = Int(fat) { context.fatGrams = f }
+
+        persistenceService.saveDailyContext(context)
+        DataBroadcaster.shared.dailyContextSaved()
+
+        Task.detached(priority: .utility) { [syncService, context] in
+            await syncService.syncDailyContextWithTimeout(context, timeout: 10)
+        }
+
+        withAnimation {
+            isSaving = false
+            showSuccess = true
+        }
+
+        onSave?()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            dismiss()
         }
     }
 }
-
-// MARK: - Quick Water Log Button (for use elsewhere)
-
-struct QuickWaterLogButton: View {
-    @StateObject private var nutritionService = NutritionService.shared
-    @State private var showingSheet = false
-
-    var body: some View {
-        Button {
-            showingSheet = true
-        } label: {
-            HStack(spacing: AppSpacing.xs) {
-                Image(systemName: "drop.fill")
-                    .foregroundStyle(AppColors.olive)
-
-                if let water = nutritionService.todayEntry?.waterIntakeMl, water > 0 {
-                    Text(formatWater(water))
-                        .font(AppTypography.labelSmall)
-                        .foregroundStyle(AppColors.textPrimary)
-                } else {
-                    Text("Log Water")
-                        .font(AppTypography.labelSmall)
-                        .foregroundStyle(AppColors.textSecondary)
-                }
-            }
-            .padding(.horizontal, AppSpacing.sm)
-            .padding(.vertical, AppSpacing.xs)
-            .background(AppColors.oliveTint)
-            .clipShape(Capsule())
-        }
-        .sheet(isPresented: $showingSheet) {
-            NutritionLoggingView()
-        }
-    }
-
-    private func formatWater(_ ml: Int) -> String {
-        if ml >= 1000 {
-            return String(format: "%.1fL", Double(ml) / 1000.0)
-        }
-        return "\(ml)ml"
-    }
-}
-
-// MARK: - Preview
 
 #Preview {
     NutritionLoggingView()

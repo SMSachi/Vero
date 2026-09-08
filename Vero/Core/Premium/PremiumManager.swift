@@ -6,9 +6,9 @@
 //  Supports 3-tier system: Free, Plus, Pro.
 //
 //  TIERS:
-//  - FREE: 3-day trial, then workout logging only
-//  - PLUS ($4.99/mo): Weekly AI trends, 30-day history
-//  - PRO ($12.99/mo): Full per-workout AI, unlimited history
+//  - FREE ($0): Workout logging + health data viewing, no AI
+//  - PLUS ($7/mo): Daily AI guidance, 30-day history
+//  - PRO ($15/mo): Deeper per-workout AI + follow-ups, unlimited history
 //
 //  USAGE:
 //  - Check `PremiumManager.shared.currentTier` for tier

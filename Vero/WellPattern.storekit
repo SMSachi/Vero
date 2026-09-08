@@ -39,7 +39,7 @@
         {
           "adHocOffers" : [],
           "codeOffers" : [],
-          "displayPrice" : "4.99",
+          "displayPrice" : "6.99",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "DF778979-7D8C-489A-A339-2012DC443FD4",
@@ -56,7 +56,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "wellpattern_plus_monthly",
+          "productID" : "com.sachishah.wellpattern.plus.monthly",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "WellPattern Plus Monthly",
           "reviewed" : false,
@@ -66,7 +66,7 @@
         {
           "adHocOffers" : [],
           "codeOffers" : [],
-          "displayPrice" : "12.99",
+          "displayPrice" : "14.99",
           "familyShareable" : false,
           "groupNumber" : 2,
           "internalID" : "638FCBEE-31FE-43A4-8DD1-19A88543C709",
@@ -83,7 +83,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "wellpattern_pro_monthly",
+          "productID" : "com.sachishah.wellpattern.pro.monthly",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "WellPattern Pro Monthly",
           "reviewed" : false,
